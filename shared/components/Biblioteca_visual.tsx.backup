@@ -1,0 +1,760 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Home, User, Settings, Search, Bell, Mail, Calendar, FileText, BarChart3, Users, Menu, X,
+  ChevronDown, ChevronRight, Plus, Edit, Trash2, Download, Upload, Filter, MoreHorizontal,
+  AlertCircle, CheckCircle, Info, AlertTriangle, Eye, EyeOff, Star, Heart, Bookmark,
+  TrendingUp, TrendingDown, DollarSign, Package, ShoppingCart, Truck, Building,
+  Phone, MapPin, Globe, Shield, Database, Wifi, Clock, Check, XCircle, Save, 
+  ChevronLeft, RefreshCw, Zap, Target, ArrowRight
+} from 'lucide-react';
+
+// Sistema de Cores Personalizado
+const customColors = {
+  primary: '#2563EB',        // Azul Corporativo
+  secondary: '#334155',      // Grafite Escuro  
+  bgLight: '#F8FAFC',        // Branco Gelo
+  bgDark: '#0F172A',         // Azul Ardósia
+  textPrimary: '#020617',    // Grafite Intenso
+  textSecondary: '#64748B',  // Cinza Médio
+  success: '#16A34A',        // Verde Esperança
+  error: '#DC2626',          // Vermelho Alerta
+  warning: '#F59E0B',        // Amarelo Cautela
+  accent: '#3B82F6'          // Azul Vibrante
+};
+
+// Toast Notification System
+const Toast = ({ type = 'info', message, onClose, duration = 4000 }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onClose();
+    }, duration);
+    return () => clearTimeout(timer);
+  }, [duration, onClose]);
+
+  const typeStyles = {
+    success: 'bg-green-500 text-white',
+    error: 'bg-red-500 text-white', 
+    warning: 'bg-yellow-500 text-black',
+    info: 'bg-blue-500 text-white'
+  };
+
+  const icons = {
+    success: CheckCircle,
+    error: XCircle,
+    warning: AlertTriangle,
+    info: Info
+  };
+
+  const Icon = icons[type];
+
+  return (
+    <div className={`fixed top-4 right-4 z-50 ${typeStyles[type]} px-6 py-4 rounded-lg shadow-lg flex items-center space-x-3 transform transition-all`}>
+      <Icon size={20} />
+      <span className="font-medium">{message}</span>
+      <button onClick={onClose} className="ml-2">
+        <X size={16} />
+      </button>
+    </div>
+  );
+};
+
+// Loading Spinner
+const LoadingSpinner = ({ size = 'md', color = 'blue' }) => {
+  const sizeClasses = {
+    sm: 'w-4 h-4',
+    md: 'w-6 h-6',
+    lg: 'w-8 h-8'
+  };
+
+  return (
+    <div className={`${sizeClasses[size]} border-2 border-${color}-200 border-t-${color}-600 rounded-full animate-spin`}></div>
+  );
+};
+
+// Button Component
+const Button = ({ 
+  children, 
+  variant = 'primary', 
+  size = 'md', 
+  loading = false, 
+  disabled = false,
+  icon: Icon,
+  onClick,
+  ...props 
+}) => {
+  const baseClasses = 'font-medium rounded-lg transition-all focus:outline-none focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2';
+  
+  const variants = {
+    primary: `bg-[${customColors.primary}] text-white hover:bg-[#1D4ED8] focus:ring-[${customColors.primary}] shadow-sm`,
+    secondary: `bg-[${customColors.secondary}] text-white hover:bg-[#1E293B] focus:ring-[${customColors.secondary}]`,
+    success: `bg-[${customColors.success}] text-white hover:bg-[#15803D] focus:ring-[${customColors.success}]`,
+    warning: `bg-[${customColors.warning}] text-white hover:bg-[#D97706] focus:ring-[${customColors.warning}]`,
+    error: `bg-[${customColors.error}] text-white hover:bg-[#B91C1C] focus:ring-[${customColors.error}]`,
+    ghost: `text-[${customColors.textSecondary}] hover:bg-[${customColors.bgLight}] focus:ring-[${customColors.accent}]`
+  };
+
+  const sizes = {
+    sm: 'px-3 py-1.5 text-sm',
+    md: 'px-4 py-2',
+    lg: 'px-6 py-3 text-lg'
+  };
+
+  return (
+    <button 
+      className={`${baseClasses} ${variants[variant]} ${sizes[size]}`}
+      disabled={disabled || loading}
+      onClick={onClick}
+      {...props}
+    >
+      {loading ? (
+        <LoadingSpinner size="sm" color="white" />
+      ) : (
+        <>
+          {Icon && <Icon size={16} />}
+          <span>{children}</span>
+        </>
+      )}
+    </button>
+  );
+};
+
+// Input Component
+const Input = ({ 
+  label, 
+  error, 
+  required = false, 
+  icon: Icon,
+  placeholder,
+  ...props 
+}) => {
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="block text-sm font-medium" style={{ color: customColors.textPrimary }}>
+          {label} {required && <span style={{ color: customColors.error }}>*</span>}
+        </label>
+      )}
+      <div className="relative">
+        {Icon && (
+          <Icon className="absolute left-3 top-1/2 transform -translate-y-1/2" style={{ color: customColors.textSecondary }} size={18} />
+        )}
+        <input
+          className={`w-full rounded-lg border transition-all outline-none ${
+            Icon ? 'pl-10 pr-3 py-2.5' : 'px-3 py-2.5'
+          } ${error ? 'border-red-500' : 'border-gray-300'}`}
+          style={{
+            backgroundColor: customColors.bgLight,
+            color: customColors.textPrimary,
+            borderColor: error ? customColors.error : '#D1D5DB',
+            ...(props.onFocus && {
+              '--focus-ring-color': customColors.primary,
+              '--focus-border-color': customColors.primary
+            })
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = customColors.primary;
+            e.target.style.boxShadow = `0 0 0 2px ${customColors.primary}25`;
+          }}
+          onBlur={(e) => {
+            e.target.style.borderColor = error ? customColors.error : '#D1D5DB';
+            e.target.style.boxShadow = 'none';
+          }}
+          placeholder={placeholder}
+          {...props}
+        />
+      </div>
+      {error && <p className="text-sm" style={{ color: customColors.error }}>{error}</p>}
+    </div>
+  );
+};
+
+// Select Component  
+const Select = ({ label, error, required = false, options = [], ...props }) => {
+  return (
+    <div className="space-y-1">
+      {label && (
+        <label className="block text-sm font-medium" style={{ color: customColors.textPrimary }}>
+          {label} {required && <span style={{ color: customColors.error }}>*</span>}
+        </label>
+      )}
+      <select
+        className={`w-full rounded-lg border transition-all outline-none px-3 py-2.5 ${
+          error ? 'border-red-500' : 'border-gray-300'
+        }`}
+        style={{
+          backgroundColor: customColors.bgLight,
+          color: customColors.textPrimary,
+          borderColor: error ? customColors.error : '#D1D5DB'
+        }}
+        onFocus={(e) => {
+          e.target.style.borderColor = customColors.primary;
+          e.target.style.boxShadow = `0 0 0 2px ${customColors.primary}25`;
+        }}
+        onBlur={(e) => {
+          e.target.style.borderColor = error ? customColors.error : '#D1D5DB';
+          e.target.style.boxShadow = 'none';
+        }}
+        {...props}
+      >
+        {options.map((option, index) => (
+          <option key={index} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      {error && <p className="text-sm" style={{ color: customColors.error }}>{error}</p>}
+    </div>
+  );
+};
+
+// KPI Card Component
+const KPICard = ({ title, value, change, icon: Icon, trend = 'neutral', loading = false }) => {
+  const trendColors = {
+    up: customColors.success,
+    down: customColors.error,
+    neutral: customColors.textSecondary
+  };
+
+  if (loading) {
+    return (
+      <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm">
+        <div className="flex items-center space-x-4">
+          <div className="w-12 h-12 bg-gray-200 rounded-xl animate-pulse"></div>
+          <div className="flex-1 space-y-2">
+            <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+            <div className="h-6 bg-gray-200 rounded animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white p-6 rounded-xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow" style={{ backgroundColor: customColors.bgLight }}>
+      <div className="flex items-center justify-between mb-4">
+        <div className="p-3 rounded-xl" style={{ backgroundColor: `${customColors.primary}15` }}>
+          <Icon style={{ color: customColors.primary }} size={24} />
+        </div>
+        {change && (
+          <span className="text-sm font-medium" style={{ color: trendColors[trend] }}>
+            {change}
+          </span>
+        )}
+      </div>
+      <h3 className="text-2xl font-bold mb-1" style={{ color: customColors.textPrimary }}>{value}</h3>
+      <p style={{ color: customColors.textSecondary }}>{title}</p>
+    </div>
+  );
+};
+
+// Alert Component
+const Alert = ({ type = 'info', title, children, dismissible = true, onDismiss }) => {
+  const alertStyles = {
+    info: { 
+      bg: `${customColors.accent}10`, 
+      border: `${customColors.accent}30`, 
+      text: customColors.accent 
+    },
+    success: { 
+      bg: `${customColors.success}10`, 
+      border: `${customColors.success}30`, 
+      text: customColors.success 
+    },
+    warning: { 
+      bg: `${customColors.warning}10`, 
+      border: `${customColors.warning}30`, 
+      text: customColors.warning 
+    },
+    error: { 
+      bg: `${customColors.error}10`, 
+      border: `${customColors.error}30`, 
+      text: customColors.error 
+    }
+  };
+
+  const icons = {
+    info: Info,
+    success: CheckCircle,
+    warning: AlertTriangle,
+    error: AlertCircle
+  };
+
+  const Icon = icons[type];
+  const style = alertStyles[type];
+
+  return (
+    <div 
+      className="border rounded-xl p-4 flex items-start space-x-3"
+      style={{ 
+        backgroundColor: style.bg, 
+        borderColor: style.border,
+        color: style.text 
+      }}
+    >
+      <Icon size={20} />
+      <div className="flex-1">
+        {title && <h4 className="font-medium mb-1">{title}</h4>}
+        <div>{children}</div>
+      </div>
+      {dismissible && (
+        <button onClick={onDismiss} className="opacity-70 hover:opacity-100">
+          <X size={18} />
+        </button>
+      )}
+    </div>
+  );
+};
+
+// Modal Component
+const Modal = ({ isOpen, onClose, title, children, size = 'md' }) => {
+  const sizeClasses = {
+    sm: 'max-w-md',
+    md: 'max-w-lg', 
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl'
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+      <div className={`bg-white rounded-xl shadow-xl w-full ${sizeClasses[size]} max-h-[90vh] overflow-hidden`}>
+        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-lg">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Sidebar Component
+const Sidebar = ({ isOpen, onToggle, items = [] }) => {
+  return (
+    <div className={`${isOpen ? 'w-56' : 'w-16'} bg-white border-r border-gray-200 transition-all duration-300 shadow-sm`}>
+      <div className="p-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          {isOpen && <h1 className="text-xl font-semibold text-gray-800">ERP System</h1>}
+          <button onClick={onToggle} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+            <Menu size={20} />
+          </button>
+        </div>
+      </div>
+      
+      <nav className="p-4 space-y-2">
+        {items.map((item, index) => (
+          <a 
+            key={index} 
+            href={item.href || '#'} 
+            className={`flex items-center space-x-3 p-3 rounded-lg transition-all ${
+              item.active 
+                ? 'bg-blue-50 text-blue-600 border border-blue-200' 
+                : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <item.icon size={20} />
+            {isOpen && <span className="font-medium">{item.label}</span>}
+          </a>
+        ))}
+      </nav>
+    </div>
+  );
+};
+
+// Data Table Component
+const DataTable = ({ 
+  columns = [], 
+  data = [], 
+  loading = false, 
+  onEdit, 
+  onDelete, 
+  onView,
+  searchable = true,
+  exportable = true 
+}) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  const filteredData = data.filter(item =>
+    Object.values(item).some(value =>
+      value.toString().toLowerCase().includes(searchTerm.toLowerCase())
+    )
+  );
+
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedData = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-xl border border-gray-100 p-8">
+        <div className="flex items-center justify-center">
+          <LoadingSpinner size="lg" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm">
+      {/* Table Header */}
+      <div className="p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-800">Dados</h3>
+          <div className="flex items-center space-x-3">
+            {searchable && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            )}
+            {exportable && (
+              <Button variant="ghost" icon={Download} size="sm">
+                Exportar
+              </Button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead className="bg-gray-50">
+            <tr>
+              {columns.map((column, index) => (
+                <th key={index} className="text-left py-3 px-6 text-gray-600 font-medium border-b border-gray-200">
+                  {column.label}
+                </th>
+              ))}
+              <th className="text-left py-3 px-6 text-gray-600 font-medium border-b border-gray-200">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {paginatedData.map((row, rowIndex) => (
+              <tr key={rowIndex} className="hover:bg-gray-50 border-b border-gray-100">
+                {columns.map((column, colIndex) => (
+                  <td key={colIndex} className="py-3 px-6 text-gray-800">
+                    {column.render ? column.render(row[column.key], row) : row[column.key]}
+                  </td>
+                ))}
+                <td className="py-3 px-6">
+                  <div className="flex space-x-2">
+                    {onView && (
+                      <button onClick={() => onView(row)} className="p-1 text-gray-600 hover:text-blue-600 transition-colors">
+                        <Eye size={16} />
+                      </button>
+                    )}
+                    {onEdit && (
+                      <button onClick={() => onEdit(row)} className="p-1 text-gray-600 hover:text-yellow-600 transition-colors">
+                        <Edit size={16} />
+                      </button>
+                    )}
+                    {onDelete && (
+                      <button onClick={() => onDelete(row)} className="p-1 text-gray-600 hover:text-red-600 transition-colors">
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="p-4 border-t border-gray-200 flex items-center justify-between">
+          <span className="text-sm text-gray-600">
+            Mostrando {startIndex + 1}-{Math.min(startIndex + itemsPerPage, filteredData.length)} de {filteredData.length} registros
+          </span>
+          <div className="flex space-x-1">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              const pageNum = i + 1;
+              return (
+                <button
+                  key={pageNum}
+                  onClick={() => setCurrentPage(pageNum)}
+                  className={`px-3 py-1 border rounded ${
+                    currentPage === pageNum
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNum}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-1 border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Demo Implementation
+const ERPDemo = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [toasts, setToasts] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const addToast = (type, message) => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, type, message }]);
+  };
+
+  const removeToast = (id) => {
+    setToasts(prev => prev.filter(toast => toast.id !== id));
+  };
+
+  const sidebarItems = [
+    { icon: Home, label: 'Dashboard', active: true },
+    { icon: Users, label: 'Usuários' },
+    { icon: Package, label: 'Produtos' },
+    { icon: ShoppingCart, label: 'Vendas' },
+    { icon: BarChart3, label: 'Relatórios' },
+    { icon: Settings, label: 'Configurações' }
+  ];
+
+  const tableColumns = [
+    { key: 'name', label: 'Nome' },
+    { key: 'email', label: 'Email' },
+    { 
+      key: 'status', 
+      label: 'Status',
+      render: (value) => (
+        <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+          value === 'Ativo' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        }`}>
+          {value}
+        </span>
+      )
+    },
+    { key: 'department', label: 'Departamento' }
+  ];
+
+  const tableData = [
+    { id: 1, name: 'João Silva', email: 'joao@empresa.com', status: 'Ativo', department: 'Vendas' },
+    { id: 2, name: 'Maria Santos', email: 'maria@empresa.com', status: 'Inativo', department: 'RH' },
+    { id: 3, name: 'Pedro Costa', email: 'pedro@empresa.com', status: 'Ativo', department: 'TI' },
+    { id: 4, name: 'Ana Oliveira', email: 'ana@empresa.com', status: 'Ativo', department: 'Financeiro' }
+  ];
+
+  const handleSave = () => {
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      addToast('success', 'Usuário salvo com sucesso!');
+      setModalOpen(false);
+    }, 1500);
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Toast Container */}
+      <div className="fixed top-4 right-4 z-50 space-y-2">
+        {toasts.map(toast => (
+          <Toast
+            key={toast.id}
+            type={toast.type}
+            message={toast.message}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
+
+      {/* Sidebar */}
+      <Sidebar 
+        isOpen={sidebarOpen} 
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        items={sidebarItems}
+      />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-gray-800">Dashboard</h2>
+              <p className="text-gray-600">Bem-vindo de volta, João!</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
+                <input 
+                  type="text" 
+                  placeholder="Buscar..." 
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                />
+              </div>
+              <button className="relative p-2 text-gray-600 hover:bg-gray-100 rounded-lg">
+                <Bell size={20} />
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">3</span>
+              </button>
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                  <User className="text-white" size={16} />
+                </div>
+                <span className="font-medium text-gray-700">João Silva</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 p-6">
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <KPICard
+              title="Vendas Hoje"
+              value="R$ 45.230"
+              change="+12%"
+              icon={DollarSign}
+              trend="up"
+            />
+            <KPICard
+              title="Novos Clientes"
+              value="127"
+              change="+8%"
+              icon={Users}
+              trend="up"
+            />
+            <KPICard
+              title="Pedidos"
+              value="1.340"
+              change="-3%"
+              icon={ShoppingCart}
+              trend="down"
+            />
+            <KPICard
+              title="Produtos"
+              value="890"
+              change="+5%"
+              icon={Package}
+              trend="up"
+            />
+          </div>
+
+          {/* Alert */}
+          <div className="mb-6">
+            <Alert type="info" title="Atualização do Sistema" dismissible onDismiss={() => {}}>
+              Nova versão disponível com melhorias de performance.
+            </Alert>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center space-x-4 mb-6">
+            <Button 
+              variant="primary" 
+              icon={Plus}
+              onClick={() => setModalOpen(true)}
+            >
+              Novo Usuário
+            </Button>
+            <Button variant="secondary" icon={Download}>
+              Exportar Dados
+            </Button>
+            <Button variant="ghost" icon={RefreshCw}>
+              Atualizar
+            </Button>
+          </div>
+
+          {/* Data Table */}
+          <DataTable
+            columns={tableColumns}
+            data={tableData}
+            loading={false}
+            onEdit={(row) => addToast('info', `Editando ${row.name}`)}
+            onDelete={(row) => addToast('warning', `Excluindo ${row.name}`)}
+            onView={(row) => addToast('info', `Visualizando ${row.name}`)}
+          />
+        </main>
+      </div>
+
+      {/* Modal */}
+      <Modal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title="Adicionar Usuário"
+        size="md"
+      >
+        <div className="space-y-4">
+          <Input
+            label="Nome completo"
+            required
+            placeholder="Digite o nome completo"
+            icon={User}
+          />
+          <Input
+            label="Email"
+            required
+            type="email"
+            placeholder="email@empresa.com"
+            icon={Mail}
+          />
+          <Select
+            label="Departamento"
+            required
+            options={[
+              { value: '', label: 'Selecione o departamento' },
+              { value: 'vendas', label: 'Vendas' },
+              { value: 'rh', label: 'RH' },
+              { value: 'ti', label: 'TI' },
+              { value: 'financeiro', label: 'Financeiro' }
+            ]}
+          />
+          <div className="flex space-x-3 pt-4">
+            <Button 
+              variant="primary" 
+              onClick={handleSave}
+              loading={loading}
+              icon={Save}
+            >
+              Salvar
+            </Button>
+            <Button 
+              variant="secondary" 
+              onClick={() => setModalOpen(false)}
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+// Exportar componentes individuais para uso em outros módulos
+export { Toast, LoadingSpinner, Button, Input, Select, KPICard, Alert, Modal, Sidebar, DataTable };
+
+export default ERPDemo;

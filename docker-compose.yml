@@ -1,0 +1,256 @@
+version: '3.8'
+
+services:
+  # Database - PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_erp
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: nexus_password
+      POSTGRES_MULTIPLE_EXTENSIONS: uuid-ossp
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_user -d nexus_erp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cache & Message Broker - Redis
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Management Module
+  nexus-user-management:
+    build:
+      context: ./modules/user-management
+      dockerfile: Dockerfile
+    container_name: nexus-user-management
+    restart: unless-stopped
+    ports:
+      - "5003:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRES_IN=24h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CRM Module
+  nexus-crm:
+    build:
+      context: .
+      dockerfile: ./modules/crm/Dockerfile
+    container_name: nexus-crm
+    restart: unless-stopped
+    ports:
+      - "5004:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Services Module
+  nexus-services:
+    build:
+      context: .
+      dockerfile: ./modules/services/Dockerfile
+    container_name: nexus-services
+    restart: unless-stopped
+    ports:
+      - "5005:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Agendamento Module
+  nexus-agendamento:
+    build:
+      context: .
+      dockerfile: ./modules/agendamento/Dockerfile
+    container_name: nexus-agendamento
+    restart: unless-stopped
+    command: npm run dev
+    ports:
+      - "5002:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      # WhatsApp Business API Configuration
+      - WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id-here
+      - WHATSAPP_ACCESS_TOKEN=your-access-token-here
+      - WHATSAPP_API_VERSION=v18.0
+      - WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token-here
+      - WHATSAPP_APP_SECRET=your-app-secret-here
+      # Redis Configuration for Message Queue
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+      nexus-services:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Application
+  nexus-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexus-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:5001
+      # ✅ SIMPLIFIED: Only one API URL needed - the Gateway!
+    depends_on:
+      - api-gateway
+    networks:
+      - nexus-network
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+
+  # API Gateway (Node.js) - ÚNICO PONTO DE ENTRADA EXTERNO
+  api-gateway:
+    image: node:18-alpine
+    container_name: nexus-api-gateway
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    restart: unless-stopped
+    ports:
+      - "5001:5001"  # ✅ ÚNICO PORTO EXTERNO
+    environment:
+      - NODE_ENV=development
+      - PORT=5001
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      - AGENDAMENTO_URL=http://nexus-agendamento:3000
+      - FRONTEND_URL=http://localhost:3002
+      - CORS_ORIGINS=http://localhost:3002,http://localhost:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    volumes:
+      - ./modules/api-gateway:/app
+      - ./modules/api-gateway/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  nexus-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

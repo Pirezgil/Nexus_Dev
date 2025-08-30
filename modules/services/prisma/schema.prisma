@@ -1,0 +1,318 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["nexus_services", "nexus_auth", "nexus_crm"]
+}
+
+// Service Status Enum
+enum ServiceStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+
+  @@schema("nexus_services")
+}
+
+// Professional Status Enum
+enum ProfessionalStatus {
+  ACTIVE
+  INACTIVE
+  VACATION
+  SICK_LEAVE
+
+  @@schema("nexus_services")
+}
+
+// Appointment Status Enum
+enum AppointmentStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+
+  @@schema("nexus_services")
+}
+
+// Payment Status Enum
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  CANCELLED
+  REFUNDED
+
+  @@schema("nexus_services")
+}
+
+// Photo Type Enum
+enum PhotoType {
+  BEFORE
+  AFTER
+  DURING
+  DOCUMENTATION
+
+  @@schema("nexus_services")
+}
+
+// Services/Procedures table
+model Service {
+  id           String        @id @default(uuid())
+  companyId    String        @map("company_id")
+  name         String        @db.VarChar(255)
+  description  String?       @db.Text
+  duration     Int           // Duration in minutes
+  price        Decimal       @db.Decimal(10, 2)
+  category     String?       @db.VarChar(100)
+  status       ServiceStatus @default(ACTIVE)
+  requirements String?       @db.Text // Special requirements/preparation
+  metadata     Json?         // Additional flexible data
+  
+  // Timestamps
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  appointments          AppointmentCompleted[]
+  professionalServices  ProfessionalService[]
+  procedureTemplates    ProcedureTemplate[]
+  appointmentMaterials  AppointmentMaterial[]
+  
+  // Indexes
+  @@index([companyId])
+  @@index([status])
+  @@index([category])
+  @@index([createdAt])
+  @@map("services")
+  @@schema("nexus_services")
+}
+
+// Professionals/Staff table
+model Professional {
+  id            String             @id @default(uuid())
+  companyId     String             @map("company_id")
+  userId        String             @unique @map("user_id") // Reference to User Management
+  name          String             @db.VarChar(255)
+  email         String             @db.VarChar(255)
+  phone         String?            @db.VarChar(50)
+  specialties   String[]           @default([]) // Array of specialties
+  status        ProfessionalStatus @default(ACTIVE)
+  hourlyRate    Decimal?           @map("hourly_rate") @db.Decimal(10, 2)
+  commission    Decimal?           @db.Decimal(5, 2) // Commission percentage
+  workSchedule  Json?              @map("work_schedule") // Working hours/days
+  metadata      Json?              // Additional flexible data
+  
+  // Timestamps
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  
+  // Relations
+  appointments          AppointmentCompleted[]
+  professionalServices  ProfessionalService[]
+  
+  // Indexes
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("professionals")
+  @@schema("nexus_services")
+}
+
+// Completed Appointments table
+model AppointmentCompleted {
+  id             String            @id @default(uuid())
+  companyId      String            @map("company_id")
+  appointmentId  String?           @map("appointment_id") @db.Uuid // Reference to Agendamento module
+  serviceId      String            @map("service_id")
+  professionalId String            @map("professional_id")
+  customerId     String            @map("customer_id") // Reference to CRM customer
+  customerName   String            @map("customer_name") @db.VarChar(255)
+  customerPhone  String?           @map("customer_phone") @db.VarChar(50)
+  
+  // Appointment Details
+  startTime      DateTime          @map("start_time")
+  endTime        DateTime          @map("end_time")
+  actualDuration Int               @map("actual_duration") // Actual duration in minutes
+  status         AppointmentStatus @default(COMPLETED)
+  
+  // Financial
+  servicePrice   Decimal           @map("service_price") @db.Decimal(10, 2)
+  discount       Decimal?          @default(0) @db.Decimal(10, 2)
+  totalAmount    Decimal           @map("total_amount") @db.Decimal(10, 2)
+  paymentStatus  PaymentStatus     @default(PENDING) @map("payment_status")
+  paymentMethod  String?           @map("payment_method") @db.VarChar(50)
+  
+  // Notes and Observations
+  notes          String?           @db.Text
+  customerNotes  String?           @map("customer_notes") @db.Text
+  internalNotes  String?           @map("internal_notes") @db.Text
+  
+  // Additional Data
+  metadata       Json?             // Additional flexible data
+  
+  // Timestamps
+  completedAt    DateTime          @default(now()) @map("completed_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  
+  // Relations
+  service        Service                @relation(fields: [serviceId], references: [id])
+  professional   Professional           @relation(fields: [professionalId], references: [id])
+  photos         ServicePhoto[]
+  materials      AppointmentMaterial[]
+  
+  // Indexes
+  @@index([companyId])
+  @@index([appointmentId])
+  @@index([serviceId])
+  @@index([professionalId])
+  @@index([customerId])
+  @@index([startTime])
+  @@index([completedAt])
+  @@index([paymentStatus])
+  @@index([status])
+  @@map("appointments_completed")
+  @@schema("nexus_services")
+}
+
+// Service Photos table (before/after photos)
+model ServicePhoto {
+  id            String               @id @default(uuid())
+  appointmentId String               @map("appointment_id")
+  companyId     String               @map("company_id")
+  type          PhotoType
+  filename      String               @db.VarChar(255)
+  originalName  String               @map("original_name") @db.VarChar(255)
+  filepath      String               @db.VarChar(500)
+  filesize      Int                  // File size in bytes
+  mimeType      String               @map("mime_type") @db.VarChar(100)
+  width         Int?
+  height        Int?
+  description   String?              @db.Text
+  
+  // Timestamps
+  createdAt     DateTime             @default(now()) @map("created_at")
+  
+  // Relations
+  appointment   AppointmentCompleted @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  
+  // Indexes
+  @@index([appointmentId])
+  @@index([companyId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("service_photos")
+  @@schema("nexus_services")
+}
+
+// Service Statistics table (for analytics/reports)
+model ServiceStats {
+  id                     String   @id @default(uuid())
+  companyId              String   @map("company_id") @unique
+  totalServices          Int      @default(0) @map("total_services")
+  activeServices         Int      @default(0) @map("active_services")
+  totalProfessionals     Int      @default(0) @map("total_professionals")
+  activeProfessionals    Int      @default(0) @map("active_professionals")
+  totalAppointments      Int      @default(0) @map("total_appointments")
+  completedAppointments  Int      @default(0) @map("completed_appointments")
+  totalRevenue           Decimal  @default(0) @map("total_revenue") @db.Decimal(12, 2)
+  averageTicket          Decimal  @default(0) @map("average_ticket") @db.Decimal(10, 2)
+  lastCalculatedAt       DateTime @default(now()) @map("last_calculated_at")
+  
+  @@map("service_stats")
+  @@schema("nexus_services")
+}
+
+// Professional-Service relationship table (N:N)
+model ProfessionalService {
+  professionalId String        @map("professional_id")
+  serviceId      String        @map("service_id")
+  canPerform     Boolean       @default(true) @map("can_perform")
+  customPrice    Decimal?      @map("custom_price") @db.Decimal(10, 2)
+  notes          String?       @db.Text
+  createdAt      DateTime      @default(now()) @map("created_at")
+  
+  // Relations
+  professional   Professional  @relation(fields: [professionalId], references: [id], onDelete: Cascade)
+  service        Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  
+  @@id([professionalId, serviceId])
+  @@index([professionalId])
+  @@index([serviceId])
+  @@map("professional_services")
+  @@schema("nexus_services")
+}
+
+// Materials/products used in appointments
+model AppointmentMaterial {
+  id            String               @id @default(uuid())
+  appointmentId String               @map("appointment_id")
+  companyId     String               @map("company_id")
+  serviceId     String?              @map("service_id") // Optional - which service this material is commonly used for
+  materialName  String               @map("material_name") @db.VarChar(255)
+  quantityUsed  Decimal              @map("quantity_used") @db.Decimal(10, 3) // 2.5ml, 1 unit, etc.
+  unit          String               @db.VarChar(20) // ml, g, unit, etc.
+  cost          Decimal?             @db.Decimal(10, 2) // Cost of material used
+  notes         String?              @db.Text
+  createdAt     DateTime             @default(now()) @map("created_at")
+  
+  // Relations
+  appointment   AppointmentCompleted @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  service       Service?             @relation(fields: [serviceId], references: [id])
+  
+  // Indexes
+  @@index([appointmentId])
+  @@index([companyId])
+  @@index([serviceId])
+  @@index([materialName])
+  @@index([createdAt])
+  @@map("appointment_materials")
+  @@schema("nexus_services")
+}
+
+// Template Type Enum for procedures
+enum TemplateType {
+  PRE_PROCEDURE
+  PROCEDURE
+  POST_PROCEDURE
+  GENERAL
+  
+  @@schema("nexus_services")
+}
+
+// Quick observation templates for procedures
+model ProcedureTemplate {
+  id           String       @id @default(uuid())
+  companyId    String       @map("company_id")
+  serviceId    String?      @map("service_id") // Optional - template for specific service
+  templateName String       @map("template_name") @db.VarChar(100)
+  templateType TemplateType @map("template_type")
+  templateText String       @map("template_text") @db.Text
+  active       Boolean      @default(true)
+  usageCount   Int          @default(0) @map("usage_count") // How many times it was used
+  createdBy    String?      @map("created_by") // User who created the template
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  
+  // Relations
+  service      Service?     @relation(fields: [serviceId], references: [id])
+  
+  // Indexes
+  @@index([companyId])
+  @@index([serviceId])
+  @@index([templateType])
+  @@index([active])
+  @@index([usageCount])
+  @@index([createdAt])
+  @@map("procedure_templates")
+  @@schema("nexus_services")
+}

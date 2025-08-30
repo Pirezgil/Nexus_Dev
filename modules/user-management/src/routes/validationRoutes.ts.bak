@@ -1,0 +1,25 @@
+/**
+ * Validation routes for User Management module
+ * Routes for cross-module validation of Auth entities
+ */
+
+import { Router } from 'express';
+import { ValidationController } from '../controllers/validationController';
+
+const router = Router();
+
+// User validation endpoints
+router.get('/users/:id/validate', ValidationController.validateUser);
+router.get('/users/:id/validate-active', ValidationController.validateActiveUser);
+router.post('/users/validate-batch', ValidationController.validateUsersBatch);
+router.get('/users/:id/info', ValidationController.getUserInfo);
+
+// Company validation endpoints
+router.get('/companies/:id/validate', ValidationController.validateCompany);
+router.get('/companies/:id/validate-active', ValidationController.validateActiveCompany);
+router.get('/companies/:id/info', ValidationController.getCompanyInfo);
+
+// Health check
+router.get('/validation/health', ValidationController.healthCheck);
+
+export default router;

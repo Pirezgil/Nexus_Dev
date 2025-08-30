@@ -1,0 +1,26 @@
+/**
+ * Validation routes for Services module
+ * Routes for cross-module validation of Services entities
+ */
+
+import { Router } from 'express';
+import { ValidationController } from '../controllers/validationController';
+
+const router = Router();
+
+// Service validation endpoints
+router.get('/services/:id/validate', ValidationController.validateService);
+router.post('/services/validate-batch', ValidationController.validateServicesBatch);
+
+// Professional validation endpoints
+router.get('/professionals/:id/validate', ValidationController.validateProfessional);
+router.get('/professionals/:id/validate-active', ValidationController.validateActiveProfessional);
+router.post('/professionals/validate-batch', ValidationController.validateProfessionalsBatch);
+
+// Completed appointment validation endpoints
+router.get('/appointments/:id/validate', ValidationController.validateCompletedAppointment);
+
+// Health check
+router.get('/validation/health', ValidationController.healthCheck);
+
+export default router;

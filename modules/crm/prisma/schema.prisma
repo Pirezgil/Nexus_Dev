@@ -1,0 +1,281 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["nexus_crm", "nexus_auth"]
+}
+
+// Customer Status Enum
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  PROSPECT
+  BLOCKED
+  
+  @@schema("nexus_crm")
+}
+
+// Interaction Type Enum
+enum InteractionType {
+  CALL
+  EMAIL
+  MEETING
+  WHATSAPP
+  SMS
+  NOTE
+  TASK
+  VISIT
+  SERVICE
+  
+  @@schema("nexus_crm")
+}
+
+// Note Type Enum
+enum NoteType {
+  GENERAL
+  IMPORTANT
+  REMINDER
+  FOLLOW_UP
+  COMPLAINT
+  COMPLIMENT
+  
+  @@schema("nexus_crm")
+}
+
+// Customer main table
+model Customer {
+  id              String         @id @default(uuid())
+  companyId       String         @map("company_id")
+  
+  // Dados básicos
+  name            String         @db.VarChar(255)
+  email           String?        @db.VarChar(255)
+  phone           String?        @db.VarChar(20)
+  secondaryPhone  String?        @map("secondary_phone") @db.VarChar(20)
+  cpfCnpj         String?        @map("cpf_cnpj") @db.VarChar(20)
+  rg              String?        @db.VarChar(20)
+  
+  // Endereço completo
+  addressStreet       String?    @map("address_street") @db.VarChar(255)
+  addressNumber       String?    @map("address_number") @db.VarChar(20)
+  addressComplement   String?    @map("address_complement") @db.VarChar(100)
+  addressNeighborhood String?    @map("address_neighborhood") @db.VarChar(100)
+  addressCity         String?    @map("address_city") @db.VarChar(100)
+  addressState        String?    @map("address_state") @db.VarChar(2)
+  addressZipcode      String?    @map("address_zipcode") @db.VarChar(10)
+  
+  // Dados demográficos
+  birthDate       DateTime?      @map("birth_date") @db.Date
+  gender          String?        @db.VarChar(10) // M, F, Other
+  maritalStatus   String?        @map("marital_status") @db.VarChar(20)
+  profession      String?        @db.VarChar(100)
+  
+  // Relacionamento
+  status          CustomerStatus @default(ACTIVE)
+  source          String?        @db.VarChar(50) // website, referral, marketing, walk-in
+  tags            String[]       @default([]) // ["VIP", "Fidelizado", "Inadimplente"]
+  notes           String?        @db.Text
+  
+  // Preferências
+  preferredContact String?       @map("preferred_contact") @default("whatsapp") @db.VarChar(20)
+  marketingConsent Boolean       @map("marketing_consent") @default(false)
+  
+  // Dados de relacionamento (CRÍTICO para integração Services)
+  firstVisit      DateTime?      @map("first_visit") @db.Date
+  lastVisit       DateTime?      @map("last_visit") @db.Date
+  totalVisits     Int           @map("total_visits") @default(0)
+  totalSpent      Decimal       @map("total_spent") @default(0) @db.Decimal(10, 2)
+  averageTicket   Decimal       @map("average_ticket") @default(0) @db.Decimal(10, 2)
+  
+  // Avatar
+  avatarUrl       String?        @map("avatar_url") @db.Text
+  
+  // Auditoria
+  createdBy       String?        @map("created_by")
+  updatedBy       String?        @map("updated_by")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  
+  // Relations
+  customerNotes    CustomerNote[]
+  interactions     CustomerInteraction[]
+  customValues     CustomerCustomValue[]
+  segmentMembers   CustomerSegmentMember[]
+  
+  // Constraints
+  @@unique([companyId, email], name: "unique_company_email")
+  @@unique([companyId, cpfCnpj], name: "unique_company_cpf_cnpj")
+  
+  // Indexes
+  @@index([companyId, status])
+  @@index([companyId, name])
+  @@index([phone])
+  @@index([email])
+  @@index([cpfCnpj])
+  @@index([birthDate])
+  @@index([createdAt])
+  @@map("customers")
+  @@schema("nexus_crm")
+}
+
+// Customer Notes table
+model CustomerNote {
+  id         String   @id @default(uuid())
+  customerId String   @map("customer_id")
+  companyId  String   @map("company_id")
+  content    String   @db.Text
+  type       NoteType @default(GENERAL)
+  isPrivate  Boolean  @default(false) @map("is_private") // Only creator can see
+  createdBy  String   @map("created_by") // User ID who created
+  
+  // Timestamps
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  // Indexes
+  @@index([customerId])
+  @@index([companyId])
+  @@index([createdBy])
+  @@index([type])
+  @@index([createdAt])
+  @@map("customer_notes")
+  @@schema("nexus_crm")
+}
+
+// Customer Interactions/History table
+model CustomerInteraction {
+  id          String          @id @default(uuid())
+  customerId  String          @map("customer_id")
+  companyId   String          @map("company_id")
+  type        InteractionType
+  subject     String?         @db.VarChar(255)
+  title       String          @db.VarChar(255)
+  description String?         @db.Text
+  direction   String?         @db.VarChar(20) // inbound, outbound
+  status      String          @default("completed") @db.VarChar(20)
+  metadata    Json?           // Additional data (duration, outcome, etc.)
+  isCompleted Boolean         @default(true) @map("is_completed") // For tasks/follow-ups
+  scheduledAt DateTime?       @map("scheduled_at") // For future interactions
+  completedAt DateTime?       @map("completed_at")
+  createdBy   String          @map("created_by") // User ID who created
+  
+  // Service integration
+  relatedServiceId String?    @map("related_service_id") // Referência para Services
+  
+  // Timestamps
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+  
+  // Relations
+  customer    Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  // Indexes
+  @@index([customerId])
+  @@index([companyId])
+  @@index([type])
+  @@index([createdBy])
+  @@index([scheduledAt])
+  @@index([createdAt])
+  @@map("customer_interactions")
+  @@schema("nexus_crm")
+}
+
+// Customer Statistics View (for analytics)
+// Note: This would be implemented as a database view in production
+model CustomerStats {
+  id                    String   @id @default(uuid())
+  companyId             String   @map("company_id") @unique
+  totalCustomers        Int      @default(0) @map("total_customers")
+  activeCustomers       Int      @default(0) @map("active_customers")
+  prospectCustomers     Int      @default(0) @map("prospect_customers")
+  totalInteractions     Int      @default(0) @map("total_interactions")
+  totalNotes            Int      @default(0) @map("total_notes")
+  averageInteractions   Float    @default(0) @map("average_interactions")
+  lastCalculatedAt      DateTime @default(now()) @map("last_calculated_at")
+  
+  @@map("customer_stats")
+  @@schema("nexus_crm")
+}
+
+// Campos customizados por empresa
+model CustomField {
+  id           String                @id @default(uuid())
+  companyId    String                @map("company_id")
+  name         String                @db.VarChar(100) // "Tipo de Pele", "Alergia"
+  fieldType    String                @map("field_type") @db.VarChar(20) // text, number, date, select, boolean
+  options      Json?                 // Para tipo select: ["Oleosa", "Seca", "Mista"]
+  required     Boolean               @default(false)
+  active       Boolean               @default(true)
+  displayOrder Int                   @map("display_order") @default(0)
+  createdAt    DateTime              @default(now()) @map("created_at")
+  
+  // Relations
+  customValues CustomerCustomValue[]
+  
+  @@unique([companyId, name])
+  @@map("custom_fields")
+  @@schema("nexus_crm")
+}
+
+// Valores dos campos customizados
+model CustomerCustomValue {
+  id            String      @id @default(uuid())
+  customerId    String      @map("customer_id")
+  customFieldId String      @map("custom_field_id")
+  value         String?     @db.Text // Valor sempre como texto, converte conforme field_type
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+  
+  // Relations
+  customer      Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customField   CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+  
+  @@unique([customerId, customFieldId])
+  @@map("customer_custom_values")
+  @@schema("nexus_crm")
+}
+
+// Segmentação de clientes
+model CustomerSegment {
+  id          String                  @id @default(uuid())
+  companyId   String                  @map("company_id")
+  name        String                  @db.VarChar(100)
+  description String?                 @db.Text
+  color       String?                 @db.VarChar(7) // Hex color para UI
+  criteria    Json?                   // Critérios automáticos de segmentação
+  isAuto      Boolean                 @map("is_auto") @default(false) // Se aplica critérios automaticamente
+  createdAt   DateTime                @default(now()) @map("created_at")
+  
+  // Relations
+  members     CustomerSegmentMember[]
+  
+  @@unique([companyId, name])
+  @@map("customer_segments")
+  @@schema("nexus_crm")
+}
+
+// Relacionamento cliente-segmento
+model CustomerSegmentMember {
+  customerId String   @map("customer_id")
+  segmentId  String   @map("segment_id")
+  addedAt    DateTime @default(now()) @map("added_at")
+  addedBy    String?  @map("added_by") // User ID who added
+  
+  // Relations
+  customer   Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  segment    CustomerSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  
+  @@id([customerId, segmentId])
+  @@map("customer_segment_members")
+  @@schema("nexus_crm")
+}

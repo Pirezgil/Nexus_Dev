@@ -1,0 +1,376 @@
+/**
+ * Validation Controller for Services module
+ * Provides endpoints for cross-module validation of Services entities
+ */
+
+import { Request, Response } from 'express';
+import { serviceService } from '../services/serviceService';
+import { professionalService } from '../services/professionalService';
+import { appointmentService } from '../services/appointmentService';
+import { Logger } from '../utils/logger';
+
+const logger = new Logger('ValidationController');
+
+export class ValidationController {
+  
+  /**
+   * Validate if a service exists
+   * GET /api/services/:id/validate
+   */
+  static async validateService(req: Request, res: Response) {
+    try {
+      const { id: serviceId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          exists: false,
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      logger.info(`Validating service ${serviceId} for company ${companyId}`);
+
+      const service = await serviceService.getById(serviceId, companyId);
+
+      if (!service) {
+        return res.status(404).json({
+          exists: false,
+          message: 'Service not found'
+        });
+      }
+
+      res.json({
+        exists: true,
+        service: {
+          id: service.id,
+          name: service.name,
+          description: service.description,
+          duration: service.duration,
+          price: service.price,
+          category: service.category,
+          status: service.status,
+          companyId: service.companyId
+        }
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating service ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Validate if a professional exists
+   * GET /api/professionals/:id/validate
+   */
+  static async validateProfessional(req: Request, res: Response) {
+    try {
+      const { id: professionalId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          exists: false,
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      logger.info(`Validating professional ${professionalId} for company ${companyId}`);
+
+      const professional = await professionalService.getById(professionalId, companyId);
+
+      if (!professional) {
+        return res.status(404).json({
+          exists: false,
+          message: 'Professional not found'
+        });
+      }
+
+      res.json({
+        exists: true,
+        professional: {
+          id: professional.id,
+          name: professional.name,
+          email: professional.email,
+          phone: professional.phone,
+          specialties: professional.specialties,
+          status: professional.status,
+          companyId: professional.companyId,
+          userId: professional.userId
+        }
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating professional ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Validate if a professional is active and available
+   * GET /api/professionals/:id/validate-active
+   */
+  static async validateActiveProfessional(req: Request, res: Response) {
+    try {
+      const { id: professionalId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          exists: false,
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      const professional = await professionalService.getById(professionalId, companyId);
+
+      if (!professional) {
+        return res.status(404).json({
+          exists: false,
+          message: 'Professional not found'
+        });
+      }
+
+      if (professional.status !== 'ACTIVE') {
+        return res.json({
+          exists: true,
+          active: false,
+          status: professional.status,
+          message: 'Professional exists but is not active'
+        });
+      }
+
+      res.json({
+        exists: true,
+        active: true,
+        professional: {
+          id: professional.id,
+          name: professional.name,
+          email: professional.email,
+          phone: professional.phone,
+          specialties: professional.specialties,
+          status: professional.status,
+          companyId: professional.companyId,
+          userId: professional.userId
+        }
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating active professional ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Validate if a completed appointment exists
+   * GET /api/appointments/:id/validate
+   */
+  static async validateCompletedAppointment(req: Request, res: Response) {
+    try {
+      const { id: appointmentId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          exists: false,
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      logger.info(`Validating completed appointment ${appointmentId} for company ${companyId}`);
+
+      const appointment = await appointmentService.getById(appointmentId, companyId);
+
+      if (!appointment) {
+        return res.status(404).json({
+          exists: false,
+          message: 'Completed appointment not found'
+        });
+      }
+
+      res.json({
+        exists: true,
+        appointment: {
+          id: appointment.id,
+          serviceId: appointment.serviceId,
+          professionalId: appointment.professionalId,
+          customerId: appointment.customerId,
+          customerName: appointment.customerName,
+          status: appointment.status,
+          totalAmount: appointment.totalAmount,
+          paymentStatus: appointment.paymentStatus,
+          completedAt: appointment.completedAt,
+          companyId: appointment.companyId
+        }
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating completed appointment ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Batch validate multiple services
+   * POST /api/services/validate-batch
+   * Body: { serviceIds: string[] }
+   */
+  static async validateServicesBatch(req: Request, res: Response) {
+    try {
+      const { serviceIds } = req.body;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      if (!Array.isArray(serviceIds) || serviceIds.length === 0) {
+        return res.status(400).json({
+          error: 'serviceIds array is required and must not be empty'
+        });
+      }
+
+      logger.info(`Batch validating ${serviceIds.length} services for company ${companyId}`);
+
+      const results: { [serviceId: string]: any } = {};
+
+      // Validate all services in parallel
+      const promises = serviceIds.map(async (serviceId: string) => {
+        try {
+          const service = await serviceService.getById(serviceId, companyId);
+          results[serviceId] = {
+            exists: !!service,
+            service: service ? {
+              id: service.id,
+              name: service.name,
+              duration: service.duration,
+              price: service.price,
+              status: service.status,
+              companyId: service.companyId
+            } : null
+          };
+        } catch (error) {
+          results[serviceId] = {
+            exists: false,
+            error: 'Validation failed'
+          };
+        }
+      });
+
+      await Promise.all(promises);
+
+      res.json({
+        success: true,
+        results
+      });
+
+    } catch (error: any) {
+      logger.error(`Error in batch services validation:`, error);
+      res.status(500).json({
+        error: 'Internal server error during batch validation'
+      });
+    }
+  }
+
+  /**
+   * Batch validate multiple professionals
+   * POST /api/professionals/validate-batch
+   * Body: { professionalIds: string[] }
+   */
+  static async validateProfessionalsBatch(req: Request, res: Response) {
+    try {
+      const { professionalIds } = req.body;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      if (!Array.isArray(professionalIds) || professionalIds.length === 0) {
+        return res.status(400).json({
+          error: 'professionalIds array is required and must not be empty'
+        });
+      }
+
+      logger.info(`Batch validating ${professionalIds.length} professionals for company ${companyId}`);
+
+      const results: { [professionalId: string]: any } = {};
+
+      // Validate all professionals in parallel
+      const promises = professionalIds.map(async (professionalId: string) => {
+        try {
+          const professional = await professionalService.getById(professionalId, companyId);
+          results[professionalId] = {
+            exists: !!professional,
+            professional: professional ? {
+              id: professional.id,
+              name: professional.name,
+              email: professional.email,
+              status: professional.status,
+              companyId: professional.companyId,
+              userId: professional.userId
+            } : null
+          };
+        } catch (error) {
+          results[professionalId] = {
+            exists: false,
+            error: 'Validation failed'
+          };
+        }
+      });
+
+      await Promise.all(promises);
+
+      res.json({
+        success: true,
+        results
+      });
+
+    } catch (error: any) {
+      logger.error(`Error in batch professionals validation:`, error);
+      res.status(500).json({
+        error: 'Internal server error during batch validation'
+      });
+    }
+  }
+
+  /**
+   * Health check for validation endpoints
+   * GET /api/validation/health
+   */
+  static async healthCheck(req: Request, res: Response) {
+    res.json({
+      module: 'services',
+      service: 'validation',
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      endpoints: [
+        'GET /api/services/:id/validate',
+        'GET /api/professionals/:id/validate',
+        'GET /api/professionals/:id/validate-active',
+        'GET /api/appointments/:id/validate',
+        'POST /api/services/validate-batch',
+        'POST /api/professionals/validate-batch'
+      ]
+    });
+  }
+}
+
+export default ValidationController;

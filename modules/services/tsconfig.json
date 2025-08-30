@@ -1,0 +1,74 @@
+{
+  "compilerOptions": {
+    // Language and environment
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    
+    // Output
+    "outDir": "./dist",
+    "rootDir": "./",
+    "removeComments": true,
+    
+    // Type checking
+    "strict": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    
+    // Module resolution
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    
+    // Advanced
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    
+    // Source maps for debugging
+    "sourceMap": true,
+    
+    // Type definitions
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["node", "jest"],
+    
+    // Path mapping for cleaner imports
+    "baseUrl": "./src",
+    "paths": {
+      "@/controllers/*": ["controllers/*"],
+      "@/services/*": ["services/*"],
+      "@/middleware/*": ["middleware/*"],
+      "@/routes/*": ["routes/*"],
+      "@/utils/*": ["utils/*"],
+      "@/types/*": ["types/*"],
+      "@/types": ["types/index"]
+    }
+  },
+  
+  "include": [
+    "src/**/*",
+    "shared/middleware/**/*",
+    "shared/validators/**/*",
+    "shared/utils/**/*"
+  ],
+  
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  
+  "ts-node": {
+    "esm": false,
+    "compilerOptions": {
+      "module": "commonjs"
+    }
+  }
+}

@@ -1,0 +1,160 @@
+// Prisma schema for User Management module
+// Database: nexus_auth schema
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["nexus_auth", "nexus_shared"]
+}
+
+// Company model for multi-tenant support
+model Company {
+  id          String    @id @default(uuid())
+  name        String
+  email       String    @unique
+  phone       String?
+  cnpj        String?   @unique
+  address     String?
+  city        String?
+  state       String?
+  zipCode     String?   @map("zip_code")
+  isActive    Boolean   @default(true) @map("is_active")
+  plan        String    @default("basic") // basic, premium, enterprise
+  maxUsers    Int       @default(5) @map("max_users")
+  settings    Json?     // Company-specific settings
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  users       User[]
+  sessions    Session[]
+
+  @@map("companies")
+  @@schema("nexus_auth")
+}
+
+// User roles enum
+enum UserRole {
+  ADMIN
+  USER
+  MANAGER
+  VIEWER
+  
+  @@schema("nexus_auth")
+}
+
+// User status enum
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  PENDING
+  SUSPENDED
+  
+  @@schema("nexus_auth")
+}
+
+// User model
+model User {
+  id              String      @id @default(uuid())
+  email           String      @unique
+  password        String
+  firstName       String      @map("first_name")
+  lastName        String      @map("last_name")
+  phone           String?
+  avatar          String?
+  role            UserRole    @default(USER)
+  status          UserStatus  @default(ACTIVE)
+  emailVerified   Boolean     @default(false) @map("email_verified")
+  lastLoginAt     DateTime?   @map("last_login_at")
+  passwordResetToken String?  @map("password_reset_token")
+  passwordResetExpires DateTime? @map("password_reset_expires")
+  emailVerificationToken String? @map("email_verification_token")
+  preferences     Json?       // User preferences
+  companyId       String      @map("company_id")
+  createdBy       String?     @map("created_by")
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  creator         User?       @relation("UserCreator", fields: [createdBy], references: [id])
+  createdUsers    User[]      @relation("UserCreator")
+  sessions        Session[]
+
+  @@map("users")
+  @@schema("nexus_auth")
+}
+
+// Session model for JWT token management
+model Session {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  companyId       String    @map("company_id")
+  accessToken     String    @unique @map("access_token")
+  refreshToken    String    @unique @map("refresh_token")
+  deviceInfo      String?   @map("device_info")
+  ipAddress       String?   @map("ip_address")
+  userAgent       String?   @map("user_agent")
+  isRevoked       Boolean   @default(false) @map("is_revoked")
+  expiresAt       DateTime  @map("expires_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+  @@schema("nexus_auth")
+}
+
+// Password Reset Request model
+model PasswordResetRequest {
+  id          String    @id @default(uuid())
+  email       String
+  token       String    @unique
+  isUsed      Boolean   @default(false) @map("is_used")
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("password_reset_requests")
+  @@schema("nexus_auth")
+}
+
+// Email Verification model
+model EmailVerification {
+  id          String    @id @default(uuid())
+  email       String
+  token       String    @unique
+  isUsed      Boolean   @default(false) @map("is_used")
+  expiresAt   DateTime  @map("expires_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("email_verifications")
+  @@schema("nexus_auth")
+}
+
+// Audit Log model for security tracking
+model AuditLog {
+  id          String    @id @default(uuid())
+  userId      String?   @map("user_id")
+  companyId   String    @map("company_id")
+  action      String    // LOGIN, LOGOUT, CREATE_USER, UPDATE_USER, DELETE_USER, etc.
+  entityType  String?   @map("entity_type") // USER, COMPANY, SESSION
+  entityId    String?   @map("entity_id")
+  oldValues   Json?     @map("old_values")
+  newValues   Json?     @map("new_values")
+  ipAddress   String?   @map("ip_address")
+  userAgent   String?   @map("user_agent")
+  success     Boolean   @default(true)
+  errorMessage String?  @map("error_message")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+  @@schema("nexus_shared")
+}

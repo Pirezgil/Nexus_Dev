@@ -1,0 +1,71 @@
+{
+  "name": "nexus-erp",
+  "version": "1.0.0",
+  "description": "Sistema ERP modular baseado na filosofia LEGO",
+  "main": "index.js",
+  "scripts": {
+    "dev": "docker-compose up -d",
+    "build": "docker-compose build",
+    "down": "docker-compose down",
+    "logs": "docker-compose logs -f",
+    "logs:user": "docker-compose logs -f nexus-user-management",
+    "logs:crm": "docker-compose logs -f nexus-crm",
+    "logs:services": "docker-compose logs -f nexus-services",
+    "logs:agendamento": "docker-compose logs -f nexus-agendamento",
+    "logs:frontend": "docker-compose logs -f nexus-frontend",
+    "logs:gateway": "docker-compose logs -f nexus-gateway",
+    "logs:db": "docker-compose logs -f nexus-postgres",
+    "logs:redis": "docker-compose logs -f nexus-redis",
+    "restart": "docker-compose restart",
+    "clean": "docker-compose down -v --remove-orphans",
+    "reset": "docker-compose down -v --remove-orphans && docker system prune -f",
+    "health": "docker-compose ps",
+    "setup": "cp .env.example .env && echo 'Please edit .env file with your configuration'",
+    "db:migrate": "docker-compose exec nexus-user-management npx prisma migrate dev",
+    "db:reset": "docker-compose exec nexus-user-management npx prisma migrate reset",
+    "db:studio": "docker-compose exec nexus-user-management npx prisma studio",
+    "test": "echo 'Tests will be implemented per module'",
+    "test:analytics": "cd shared && npm test -- --testPathPattern=analytics.test.ts",
+    "analytics:start": "cd shared && node --loader ts-node/esm scripts/start-analytics.ts",
+    "analytics:test": "cd shared && node --loader ts-node/esm scripts/start-analytics.ts --test",
+    "analytics:status": "curl -f http://localhost:3001/api/analytics/health || echo 'Analytics API not available'",
+    "lint": "echo 'Linting will be implemented per module'",
+    "format": "echo 'Formatting will be implemented per module'"
+  },
+  "keywords": [
+    "erp",
+    "modular",
+    "multi-tenant",
+    "crm",
+    "agendamento",
+    "gestao"
+  ],
+  "author": "Nexus ERP Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "workspaces": [
+    "modules/*",
+    "frontend",
+    "shared/*"
+  ],
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-org/nexus-erp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/your-org/nexus-erp/issues"
+  },
+  "homepage": "https://github.com/your-org/nexus-erp#readme",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "http-proxy-middleware": "^3.0.5",
+    "node-fetch": "^3.3.2"
+  }
+}

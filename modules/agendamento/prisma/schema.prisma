@@ -1,0 +1,297 @@
+// Schema para o módulo Agendamento - Nexus ERP
+// Responsável pela gestão completa de agendamentos, calendário e notificações
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["nexus_agendamento", "nexus_auth", "nexus_crm", "nexus_services"]
+}
+
+// Agendamentos principais
+model Appointment {
+  id          String @id @default(uuid()) @db.Uuid
+  company_id  String @db.Uuid // Multi-tenant
+
+  // Referências para outros módulos
+  customer_id      String @db.Uuid // Referência nexus_crm.customers
+  professional_id  String @db.Uuid // Referência nexus_services.professionals  
+  service_id       String @db.Uuid // Referência nexus_services.services
+
+  // Dados temporais
+  appointment_date     DateTime @db.Date
+  appointment_time     DateTime @db.Time
+  appointment_end_time DateTime @db.Time
+  timezone             String   @default("America/Sao_Paulo") @db.VarChar(50)
+
+  // Status do agendamento
+  status String @default("scheduled") @db.VarChar(20) // scheduled, confirmed, completed, cancelled, no_show, rescheduled
+
+  // Dados do agendamento
+  notes            String? // Observações especiais
+  internal_notes   String? // Notas internas (cliente não vê)
+  estimated_price  Decimal? @db.Decimal(10, 2) // Preço estimado do serviço
+
+  // Configurações de notificação
+  send_confirmation      Boolean @default(true)
+  send_reminder          Boolean @default(true)
+  reminder_hours_before  Int     @default(24) // Lembrete 24h antes
+
+  // Dados de confirmação
+  confirmed_at DateTime?
+  confirmed_by String?   @db.VarChar(50) // customer, staff, auto
+
+  // Reagendamento (se aplicável)
+  original_appointment_id  String?   @db.Uuid
+  original_appointment     Appointment? @relation("AppointmentReschedule", fields: [original_appointment_id], references: [id])
+  rescheduled_appointments Appointment[] @relation("AppointmentReschedule")
+  rescheduled_from_date    DateTime? @db.Date
+  rescheduled_from_time    DateTime? @db.Time
+  reschedule_reason        String?   @db.VarChar(255)
+
+  // Completion (integração com Services)
+  completed_at              DateTime?
+  completed_appointment_id  String?   @db.Uuid // Referência para nexus_services.appointments_completed
+
+  // Auditoria
+  created_by String?   @db.Uuid // Referência nexus_auth.users(id)
+  updated_by String?   @db.Uuid // Referência nexus_auth.users(id)
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  // Relacionamentos
+  notifications AppointmentNotification[]
+  waiting_lists WaitingList[]
+
+  @@map("appointments")
+  @@schema("nexus_agendamento")
+  @@index([company_id, appointment_date])
+  @@index([professional_id, appointment_date, appointment_time])
+  @@index([customer_id])
+  @@index([status])
+  @@index([appointment_date, appointment_time])
+}
+
+// Bloqueios de horário (feriados, folgas, etc.)
+model ScheduleBlock {
+  id          String  @id @default(uuid()) @db.Uuid
+  company_id  String  @db.Uuid
+
+  // Pode ser para profissional específico ou geral
+  professional_id String? @db.Uuid // NULL = bloqueia para todos
+
+  // Período do bloqueio
+  start_date DateTime @db.Date
+  end_date   DateTime @db.Date
+  start_time DateTime? @db.Time // NULL = dia todo
+  end_time   DateTime? @db.Time // NULL = dia todo
+
+  // Tipo e descrição
+  block_type  String  @db.VarChar(50) // holiday, vacation, maintenance, personal
+  title       String  @db.VarChar(255) // "Férias Dr. Ana", "Feriado Nacional"
+  description String?
+
+  // Recorrência (opcional)
+  is_recurring     Boolean @default(false)
+  recurrence_rule  Json? // {"frequency": "weekly", "days": ["monday", "friday"]}
+
+  // Status
+  active Boolean @default(true)
+
+  // Auditoria
+  created_by String?   @db.Uuid // Referência nexus_auth.users(id)
+  created_at DateTime  @default(now())
+
+  @@map("schedule_blocks")
+  @@schema("nexus_agendamento")
+  @@index([professional_id, start_date, end_date])
+  @@index([company_id, start_date, end_date])
+}
+
+// Lista de espera para horários ocupados
+model WaitingList {
+  id          String @id @default(uuid()) @db.Uuid
+  company_id  String @db.Uuid
+
+  // Dados da solicitação
+  customer_id      String  @db.Uuid
+  service_id       String  @db.Uuid
+  professional_id  String? @db.Uuid // NULL = qualquer profissional
+
+  // Preferências de horário
+  preferred_date         DateTime? @db.Date
+  preferred_time_start   DateTime? @db.Time // Ex: 09:00
+  preferred_time_end     DateTime? @db.Time // Ex: 12:00
+  flexible_date          Boolean   @default(true) // Aceita outras datas próximas
+  flexible_time          Boolean   @default(true) // Aceita outros horários
+
+  // Status da espera
+  status   String @default("waiting") @db.VarChar(20) // waiting, contacted, scheduled, expired
+  priority Int    @default(0) // 0 = normal, 1 = high priority
+
+  // Notificação quando vaga abrir
+  notify_phone    Boolean @default(true)
+  notify_whatsapp Boolean @default(true)
+  notify_email    Boolean @default(false)
+
+  // Controle
+  expires_at    DateTime?
+  contacted_at  DateTime?
+  contacted_by  String?   @db.Uuid // Referência nexus_auth.users(id)
+
+  // Relacionamento com agendamento (quando conseguir vaga)
+  appointment_id String?      @db.Uuid
+  appointment    Appointment? @relation(fields: [appointment_id], references: [id])
+
+  // Auditoria
+  created_by String?  @db.Uuid // Referência nexus_auth.users(id)
+  created_at DateTime @default(now())
+
+  @@map("waiting_list")
+  @@schema("nexus_agendamento")
+  @@index([service_id, preferred_date])
+  @@index([status])
+}
+
+// Notificações enviadas (log para controle)
+model AppointmentNotification {
+  id             String @id @default(uuid()) @db.Uuid
+  appointment_id String @db.Uuid
+  appointment    Appointment @relation(fields: [appointment_id], references: [id], onDelete: Cascade)
+
+  // Tipo e canal
+  notification_type String @db.VarChar(50) // confirmation, reminder, cancellation, reschedule
+  channel          String @db.VarChar(20) // whatsapp, sms, email
+
+  // Destinatário
+  recipient_phone String? @db.VarChar(20)
+  recipient_email String? @db.VarChar(255)
+
+  // Conteúdo
+  message_template String? @db.VarChar(100) // Nome do template usado
+  message_content  String? // Mensagem final enviada
+
+  // Status de envio
+  status         String    @default("pending") @db.VarChar(20) // pending, sent, delivered, failed, read
+  sent_at        DateTime?
+  delivered_at   DateTime?
+  read_at        DateTime? // Para WhatsApp
+  failure_reason String?
+
+  // Provider response
+  external_message_id String? @db.VarChar(255) // ID da mensagem no provider
+  provider_response   Json?
+
+  created_at DateTime @default(now())
+
+  @@map("appointment_notifications")
+  @@schema("nexus_agendamento")
+  @@index([appointment_id])
+  @@index([status, sent_at])
+}
+
+// Templates de mensagens
+model MessageTemplate {
+  id          String @id @default(uuid()) @db.Uuid
+  company_id  String @db.Uuid
+
+  // Identificação
+  template_name String @db.VarChar(100) // "appointment_confirmation", "reminder_24h"
+  template_type String @db.VarChar(50)  // confirmation, reminder, cancellation
+  channel       String @db.VarChar(20)  // whatsapp, sms, email
+
+  // Conteúdo
+  subject String? @db.VarChar(255) // Para email
+  content String // Pode conter variáveis: {{customer_name}}, {{date}}, {{time}}
+
+  // Configurações
+  active     Boolean @default(true)
+  is_default Boolean @default(false) // Template padrão para o tipo
+
+  // Auditoria
+  created_by String?  @db.Uuid // Referência nexus_auth.users(id)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("message_templates")
+  @@schema("nexus_agendamento")
+  @@unique([company_id, template_name, channel])
+}
+
+// Configurações de horário de funcionamento da empresa
+model BusinessHour {
+  id          String @id @default(uuid()) @db.Uuid
+  company_id  String @db.Uuid
+
+  // Dia da semana (0 = domingo, 1 = segunda, ..., 6 = sábado)
+  day_of_week Int @db.SmallInt
+
+  // Horários
+  is_open    Boolean   @default(true)
+  start_time DateTime? @db.Time
+  end_time   DateTime? @db.Time
+
+  // Intervalo de almoço (opcional)
+  lunch_start DateTime? @db.Time
+  lunch_end   DateTime? @db.Time
+
+  // Configurações
+  slot_duration_minutes  Int     @default(30) // Slots de agendamento (30min padrão)
+  advance_booking_days   Int     @default(60) // Máximo 60 dias no futuro
+  same_day_booking       Boolean @default(true) // Permite agendamento no mesmo dia
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("business_hours")
+  @@schema("nexus_agendamento")
+  @@unique([company_id, day_of_week])
+}
+
+// Configurações gerais do módulo por empresa
+model AgendamentoConfig {
+  id          String @id @default(uuid()) @db.Uuid
+  company_id  String @unique @db.Uuid
+
+  // Configurações de WhatsApp
+  whatsapp_enabled     Boolean @default(false)
+  whatsapp_phone       String? @db.VarChar(20)
+  whatsapp_api_token   String? @db.VarChar(500)
+  whatsapp_webhook_url String? @db.VarChar(255)
+
+  // Configurações de SMS
+  sms_enabled   Boolean @default(false)
+  sms_provider  String? @db.VarChar(50) // twillio, nexmo, etc
+  sms_api_key   String? @db.VarChar(255)
+  sms_sender    String? @db.VarChar(20)
+
+  // Configurações de Email
+  email_enabled Boolean @default(true)
+  smtp_host     String? @db.VarChar(255)
+  smtp_port     Int?    @default(587)
+  smtp_user     String? @db.VarChar(255)
+  smtp_password String? @db.VarChar(255)
+  email_from    String? @db.VarChar(255)
+
+  // Configurações de agendamento
+  auto_confirmation_enabled Boolean @default(false)
+  max_advance_booking_days  Int     @default(60)
+  min_advance_booking_hours Int     @default(2)
+  allow_same_day_booking    Boolean @default(true)
+  reminder_default_hours    Int     @default(24)
+
+  // Configurações de calendário
+  default_slot_duration     Int     @default(30)
+  working_hours_start       DateTime @default(dbgenerated("'08:00:00'::time")) @db.Time
+  working_hours_end         DateTime @default(dbgenerated("'18:00:00'::time")) @db.Time
+  calendar_view_default     String  @default("week") @db.VarChar(10) // day, week, month
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@map("agendamento_config")
+  @@schema("nexus_agendamento")
+}

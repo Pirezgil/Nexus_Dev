@@ -1,0 +1,443 @@
+/**
+ * Validation Controller for User Management module
+ * Provides endpoints for cross-module validation of Auth entities
+ */
+
+import { Request, Response } from 'express';
+import { userService } from '../services/userService';
+import prisma from '../utils/database';
+import { Logger } from '../utils/logger';
+
+const logger = new Logger('ValidationController');
+
+export class ValidationController {
+  
+  /**
+   * Validate if a user exists
+   * GET /api/users/:id/validate
+   */
+  static async validateUser(req: Request, res: Response) {
+    try {
+      const { id: userId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          exists: false,
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      logger.info(`Validating user ${userId} for company ${companyId}`);
+
+      const user = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          companyId: companyId
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          companyId: true,
+          createdAt: true
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          exists: false,
+          message: 'User not found'
+        });
+      }
+
+      res.json({
+        exists: true,
+        user: user
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating user ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Validate if a user exists and is active
+   * GET /api/users/:id/validate-active
+   */
+  static async validateActiveUser(req: Request, res: Response) {
+    try {
+      const { id: userId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          exists: false,
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      const user = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          companyId: companyId
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          companyId: true,
+          createdAt: true
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          exists: false,
+          message: 'User not found'
+        });
+      }
+
+      if (user.status !== 'ACTIVE') {
+        return res.json({
+          exists: true,
+          active: false,
+          status: user.status,
+          message: 'User exists but is not active'
+        });
+      }
+
+      res.json({
+        exists: true,
+        active: true,
+        user: user
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating active user ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Validate if a company exists
+   * GET /api/companies/:id/validate
+   */
+  static async validateCompany(req: Request, res: Response) {
+    try {
+      const { id: companyId } = req.params;
+
+      logger.info(`Validating company ${companyId}`);
+
+      const company = await prisma.company.findUnique({
+        where: {
+          id: companyId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isActive: true,
+          plan: true,
+          maxUsers: true,
+          createdAt: true
+        }
+      });
+
+      if (!company) {
+        return res.status(404).json({
+          exists: false,
+          message: 'Company not found'
+        });
+      }
+
+      res.json({
+        exists: true,
+        company: company
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating company ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Validate if a company exists and is active
+   * GET /api/companies/:id/validate-active
+   */
+  static async validateActiveCompany(req: Request, res: Response) {
+    try {
+      const { id: companyId } = req.params;
+
+      const company = await prisma.company.findUnique({
+        where: {
+          id: companyId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          isActive: true,
+          plan: true,
+          maxUsers: true,
+          createdAt: true
+        }
+      });
+
+      if (!company) {
+        return res.status(404).json({
+          exists: false,
+          message: 'Company not found'
+        });
+      }
+
+      if (!company.isActive) {
+        return res.json({
+          exists: true,
+          active: false,
+          isActive: company.isActive,
+          message: 'Company exists but is not active'
+        });
+      }
+
+      res.json({
+        exists: true,
+        active: true,
+        company: company
+      });
+
+    } catch (error: any) {
+      logger.error(`Error validating active company ${req.params.id}:`, error);
+      res.status(500).json({
+        exists: false,
+        error: 'Internal server error during validation'
+      });
+    }
+  }
+
+  /**
+   * Batch validate multiple users
+   * POST /api/users/validate-batch
+   * Body: { userIds: string[] }
+   */
+  static async validateUsersBatch(req: Request, res: Response) {
+    try {
+      const { userIds } = req.body;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return res.status(400).json({
+          error: 'userIds array is required and must not be empty'
+        });
+      }
+
+      logger.info(`Batch validating ${userIds.length} users for company ${companyId}`);
+
+      const users = await prisma.user.findMany({
+        where: {
+          id: { in: userIds },
+          companyId: companyId
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          companyId: true,
+          createdAt: true
+        }
+      });
+
+      const results: { [userId: string]: any } = {};
+
+      userIds.forEach(userId => {
+        const user = users.find(u => u.id === userId);
+        results[userId] = {
+          exists: !!user,
+          user: user || null
+        };
+      });
+
+      res.json({
+        success: true,
+        results
+      });
+
+    } catch (error: any) {
+      logger.error(`Error in batch user validation:`, error);
+      res.status(500).json({
+        error: 'Internal server error during batch validation'
+      });
+    }
+  }
+
+  /**
+   * Get user basic info for cross-module integration
+   * GET /api/users/:id/info
+   */
+  static async getUserInfo(req: Request, res: Response) {
+    try {
+      const { id: userId } = req.params;
+      const companyId = req.headers['x-company-id'] as string;
+
+      if (!companyId) {
+        return res.status(400).json({
+          error: 'Company ID is required in headers (x-company-id)'
+        });
+      }
+
+      const user = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          companyId: companyId
+        },
+        select: {
+          id: true,
+          email: true,
+          firstName: true,
+          lastName: true,
+          role: true,
+          status: true,
+          companyId: true,
+          createdAt: true
+        }
+      });
+
+      if (!user) {
+        return res.status(404).json({
+          error: 'User not found'
+        });
+      }
+
+      // Return minimal user info for integration purposes
+      res.json({
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: `${user.firstName} ${user.lastName}`,
+        role: user.role,
+        status: user.status,
+        companyId: user.companyId,
+        createdAt: user.createdAt
+      });
+
+    } catch (error: any) {
+      logger.error(`Error getting user info ${req.params.id}:`, error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Get company basic info for cross-module integration
+   * GET /api/companies/:id/info
+   */
+  static async getCompanyInfo(req: Request, res: Response) {
+    try {
+      const { id: companyId } = req.params;
+
+      const company = await prisma.company.findUnique({
+        where: {
+          id: companyId
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          cnpj: true,
+          city: true,
+          state: true,
+          isActive: true,
+          plan: true,
+          maxUsers: true,
+          createdAt: true,
+          _count: {
+            select: {
+              users: true
+            }
+          }
+        }
+      });
+
+      if (!company) {
+        return res.status(404).json({
+          error: 'Company not found'
+        });
+      }
+
+      // Return company info for integration purposes
+      res.json({
+        id: company.id,
+        name: company.name,
+        email: company.email,
+        phone: company.phone,
+        cnpj: company.cnpj,
+        city: company.city,
+        state: company.state,
+        isActive: company.isActive,
+        plan: company.plan,
+        maxUsers: company.maxUsers,
+        currentUsers: company._count.users,
+        createdAt: company.createdAt
+      });
+
+    } catch (error: any) {
+      logger.error(`Error getting company info ${req.params.id}:`, error);
+      res.status(500).json({
+        error: 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Health check for validation endpoints
+   * GET /api/validation/health
+   */
+  static async healthCheck(req: Request, res: Response) {
+    res.json({
+      module: 'user-management',
+      service: 'validation',
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      endpoints: [
+        'GET /api/users/:id/validate',
+        'GET /api/users/:id/validate-active',
+        'POST /api/users/validate-batch',
+        'GET /api/users/:id/info',
+        'GET /api/companies/:id/validate',
+        'GET /api/companies/:id/validate-active',
+        'GET /api/companies/:id/info'
+      ]
+    });
+  }
+}
+
+export default ValidationController;
