@@ -4,7 +4,7 @@
   "description": "Centralized API Gateway for ERP Nexus - Routes and authenticates all module requests",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json --noEmitOnError false",
+    "build": "tsc --noEmitOnError false",
     "build:dev": "tsc",
     "start": "node dist/server.js",
     "dev": "nodemon src/server.ts",
@@ -25,7 +25,7 @@
     "jsonwebtoken": "^9.0.2",
     "winston": "^3.11.0",
     "dotenv": "^16.3.1",
-    "node-fetch": "^2.7.0",
+    "node-fetch": "^2.6.11",
     "multer": "^1.4.5-lts.1",
     "form-data": "^4.0.0"
   },
@@ -35,7 +35,7 @@
     "@types/compression": "^1.7.5",
     "@types/jsonwebtoken": "^9.0.5",
     "@types/node": "^20.10.4",
-    "@types/node-fetch": "^2.6.9",
+    "@types/node-fetch": "^2.6.11",
     "@types/multer": "^1.4.11",
     "typescript": "^5.3.3",
     "nodemon": "^3.0.2",

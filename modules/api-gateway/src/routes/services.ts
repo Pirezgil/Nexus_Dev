@@ -1,11 +1,25 @@
 import { Router } from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import rateLimit from 'express-rate-limit';
+import crypto from 'crypto';
 import { logger } from '../utils/logger';
+import { authMiddleware } from '../middleware/auth';
+import { HTTP_HEADERS } from 'shared/constants/headers';
 
 export const servicesRoutes = Router();
 
+// Apply authentication middleware FIRST, before proxy
+servicesRoutes.use(authMiddleware);
+
 const SERVICES_SERVICE_URL = process.env.SERVICES_URL || 'http://nexus-services:3000';
+
+// HMAC Secret para autenticação criptográfica entre Gateway e Serviços
+const GATEWAY_HMAC_SECRET = process.env.GATEWAY_HMAC_SECRET;
+if (!GATEWAY_HMAC_SECRET) {
+  throw new Error('GATEWAY_HMAC_SECRET environment variable is required for secure inter-service communication');
+}
+
+const HMAC_SIGNATURE_VALIDITY_SECONDS = 60; // 60 segundos para prevenir replay attacks
 
 // Services-specific rate limiting (disabled in development)
 const isDevelopment = process.env.NODE_ENV === 'development';
@@ -65,22 +79,46 @@ const servicesProxy = createProxyMiddleware({
   pathRewrite: {
     '^/api/services': '/api/services'
   },
-  timeout: 60000, // 60 seconds for services (file uploads may take time)
+  timeout: parseInt(process.env.TIMEOUT_GATEWAY_SERVICES || '60000', 10), // Configurable timeout for services
   
   onProxyReq: (proxyReq, req: any, res) => {
     const requestId = req.requestId || 'unknown';
     const user = req.user;
 
-    // Add gateway headers
+    // 🔐 GERAÇÃO DE ASSINATURA HMAC CRIPTOGRÁFICA
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    
+    // Capturar corpo da requisição para incluir na assinatura
+    let bodyString = '';
+    if (req.body && typeof req.body === 'object') {
+      try {
+        bodyString = JSON.stringify(req.body);
+      } catch (e) {
+        bodyString = '';
+      }
+    } else if (req.body && typeof req.body === 'string') {
+      bodyString = req.body;
+    }
+
+    // Criar dados para assinatura: timestamp.método.path.corpo
+    const dataToSign = `${timestamp}.${req.method}.${req.path}.${bodyString}`;
+    
+    // Gerar assinatura HMAC-SHA256
+    const signature = crypto
+      .createHmac('sha256', GATEWAY_HMAC_SECRET!)
+      .update(dataToSign, 'utf8')
+      .digest('hex');
+
+    // Headers de autenticação criptográfica (substituem X-Gateway-Source)
+    proxyReq.setHeader('X-Gateway-Timestamp', timestamp);
+    proxyReq.setHeader('X-Gateway-Signature', signature);
     proxyReq.setHeader('X-Gateway-Request-ID', requestId);
-    proxyReq.setHeader('X-Gateway-Source', 'nexus-api-gateway');
-    proxyReq.setHeader('X-Gateway-Timestamp', new Date().toISOString());
     
     // Multi-tenancy headers for company/user isolation
     if (user) {
-      proxyReq.setHeader('X-Company-ID', user.companyId);
-      proxyReq.setHeader('X-User-ID', user.userId);
-      proxyReq.setHeader('X-User-Role', user.role || 'user');
+      proxyReq.setHeader(HTTP_HEADERS.COMPANY_ID, user.companyId);
+      proxyReq.setHeader(HTTP_HEADERS.USER_ID, user.userId);
+      proxyReq.setHeader(HTTP_HEADERS.USER_ROLE, user.role || 'user');
       
       // Forward auth token for service-level validation
       const authHeader = req.get('Authorization');
@@ -100,7 +138,7 @@ const servicesProxy = createProxyMiddleware({
       proxyReq.setHeader('Content-Type', contentType);
     }
     
-    logger.info('Services request proxied:', {
+    logger.info('Services request proxied with HMAC signature:', {
       requestId,
       method: req.method,
       path: req.path,
@@ -108,7 +146,10 @@ const servicesProxy = createProxyMiddleware({
       userId: user?.userId,
       contentType: contentType,
       target: SERVICES_SERVICE_URL,
-      ip: req.ip
+      ip: req.ip,
+      timestampGenerated: timestamp,
+      signatureLength: signature.length,
+      hasHMACAuth: true
     });
   },
 
@@ -176,6 +217,18 @@ const servicesProxy = createProxyMiddleware({
         code: 'SERVICES_TIMEOUT',
         requestId,
         suggestion: 'For file uploads, try smaller files or check your connection'
+      });
+      return;
+    }
+
+    // Handle socket hang up / connection reset
+    if ((err as any).code === 'ECONNRESET') {
+      res.status(502).json({
+        success: false,
+        error: 'Connection reset by services module',
+        code: 'CONNECTION_RESET',
+        requestId,
+        suggestion: 'Please retry your request'
       });
       return;
     }

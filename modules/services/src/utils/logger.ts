@@ -107,33 +107,31 @@ const transports = [
 // Add file transport for production
 if (config.nodeEnv === 'production') {
   // Error log file
-  transports.push(
-    new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.errors({ stack: true }),
-        winston.format.json()
-      ),
-      maxsize: 10485760, // 10MB
-      maxFiles: 5,
-    })
-  );
+  const errorTransport = new winston.transports.File({
+    filename: 'logs/error.log',
+    level: 'error',
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.errors({ stack: true }),
+      winston.format.json()
+    ),
+    maxsize: 10485760, // 10MB
+    maxFiles: 5,
+  });
+  transports.push(errorTransport);
 
   // Combined log file
-  transports.push(
-    new winston.transports.File({
-      filename: 'logs/combined.log',
-      format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.errors({ stack: true }),
-        winston.format.json()
-      ),
-      maxsize: 10485760, // 10MB
-      maxFiles: 5,
-    })
-  );
+  const combinedTransport = new winston.transports.File({
+    filename: 'logs/combined.log',
+    format: winston.format.combine(
+      winston.format.timestamp(),
+      winston.format.errors({ stack: true }),
+      winston.format.json()
+    ),
+    maxsize: 10485760, // 10MB
+    maxFiles: 5,
+  });
+  transports.push(combinedTransport);
 }
 
 // Create winston logger instance

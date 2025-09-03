@@ -59,19 +59,28 @@ if (process.env.NODE_ENV !== 'development') {
 
 // Handle OPTIONS requests for CORS
 authRoutes.options('*', (req: Request, res: Response) => {
-  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3002',
+    'http://localhost:5000',
+    process.env.FRONTEND_URL
+  ].filter(Boolean);
+  
+  const origin = req.headers.origin;
+  const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || '*';
+  
+  res.setHeader('Access-Control-Allow-Origin', allowOrigin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-Company-ID, X-User-ID');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.status(200).end();
+  res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
+  res.status(204).end();
 });
 
 // Helper function to make requests to user-management service
 const forwardToUserManagement = async (req: Request, res: Response, path: string) => {
   const requestId = (req as any).requestId || 'unknown';
   
-  // 🚨 TESTE SIMPLES - SE VOCÊ VER ISSO NOS LOGS, O CÓDIGO ESTÁ FUNCIONANDO
-  console.log('🚨 CÓDIGO NOVO EXECUTANDO - forwardToUserManagement foi chamado!', { path, hasAuth: !!req.headers.authorization });
   
   try {
     logger.info('Auth request forwarding:', {
@@ -80,9 +89,7 @@ const forwardToUserManagement = async (req: Request, res: Response, path: string
       path: req.path,
       target: `${USER_MANAGEMENT_URL}${path}`,
       ip: req.ip,
-      body: req.body,
-      hasAuthHeader: !!req.headers.authorization,
-      authHeaderValue: req.headers.authorization ? `Bearer ${req.headers.authorization.substring(7, 20)}...` : 'none'
+      hasAuthHeader: !!req.headers.authorization
     });
 
     // Prepare headers - forward Authorization header if present
@@ -99,37 +106,35 @@ const forwardToUserManagement = async (req: Request, res: Response, path: string
     // Forward Authorization header if present
     if (req.headers.authorization) {
       headers['Authorization'] = req.headers.authorization;
-      logger.info('🔐 Authorization header forwarded:', {
-        requestId,
-        authHeader: `${req.headers.authorization.substring(0, 20)}...`,
-        headerLength: req.headers.authorization.length
-      });
+      logger.debug('Authorization header forwarded', { requestId });
     } else {
-      logger.warn('⚠️ No Authorization header found in request:', {
-        requestId,
-        availableHeaders: Object.keys(req.headers)
-      });
+      logger.debug('No Authorization header found in request', { requestId });
     }
 
-    logger.info('Request headers being sent:', {
-      requestId,
-      headers: Object.keys(headers),
-      hasAuth: !!headers.Authorization
-    });
 
-    // Use node-fetch or axios for HTTP requests
-    const fetchOptions = {
-      method: req.method,
-      headers: headers as any, // Força o tipo para evitar erros TS
-      body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined,
+    // Use node-fetch for HTTP requests
+    const fetchOptions: RequestInit = {
+      method: req.method as 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH',
+      headers,
+      body: req.method !== 'GET' ? JSON.stringify(req.body) : undefined
     };
     
-    const response = await fetch(`${USER_MANAGEMENT_URL}${path}`, fetchOptions);
+    const response = await fetch(`${USER_MANAGEMENT_URL}${path}`, fetchOptions as any);
 
     const data = await response.json();
 
     // Add CORS headers
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3002', 
+      'http://localhost:5000',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    const origin = req.headers.origin;
+    const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || '*';
+    
+    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('X-Gateway-Processed', 'true');
     res.setHeader('X-Request-ID', requestId);
@@ -221,12 +226,6 @@ authRoutes.post('/avatar', upload.single('avatar'), async (req: Request, res: Re
       hasAuth: !!req.headers.authorization
     });
     
-    console.log('🔍 API Gateway file details:', {
-      originalname: req.file?.originalname,
-      mimetype: req.file?.mimetype,
-      size: req.file?.size,
-      fieldname: req.file?.fieldname
-    });
 
     if (!req.file) {
       return res.status(400).json({
@@ -244,7 +243,6 @@ authRoutes.post('/avatar', upload.single('avatar'), async (req: Request, res: Re
 
     // Forward to user-management service
     const targetUrl = `${USER_MANAGEMENT_URL}/auth/avatar`;
-    console.log('🎯 Forwarding to URL:', targetUrl);
     
     const response = await fetch(targetUrl, {
       method: 'POST',
@@ -256,13 +254,21 @@ authRoutes.post('/avatar', upload.single('avatar'), async (req: Request, res: Re
       body: formData
     });
     
-    console.log('📡 Response status:', response.status);
-    console.log('📡 Response ok:', response.ok);
 
     const data = await response.json();
 
     // Add CORS headers
-    res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*');
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3002', 
+      'http://localhost:5000',
+      process.env.FRONTEND_URL
+    ].filter(Boolean);
+    
+    const origin = req.headers.origin;
+    const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || '*';
+    
+    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
     res.setHeader('Access-Control-Allow-Credentials', 'true');
     res.setHeader('X-Gateway-Processed', 'true');
     res.setHeader('X-Request-ID', requestId);
@@ -292,8 +298,6 @@ authRoutes.post('/avatar', upload.single('avatar'), async (req: Request, res: Re
 
 // Static file proxy for uploaded avatars
 authRoutes.get('/uploads/*', async (req: Request, res: Response) => {
-  console.log('🖼️ Static file request:', req.path);
-  console.log('🎯 Proxying to:', `${USER_MANAGEMENT_URL}${req.path}`);
   
   try {
     const filePath = req.path; // e.g., /uploads/avatars/user-id/file.jpg
@@ -313,8 +317,8 @@ authRoutes.get('/uploads/*', async (req: Request, res: Response) => {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year cache
     res.send(buffer);
-  } catch (error) {
-    console.error('File proxy error:', error);
+  } catch (error: any) {
+    logger.error('File proxy error:', { error: error.message, path: req.path });
     res.status(500).json({
       success: false,
       error: 'Failed to load file'

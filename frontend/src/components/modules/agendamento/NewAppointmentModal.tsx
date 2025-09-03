@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Customer, Professional, Service, AppointmentFormData, CalendarAvailability } from '@/types';
 import { agendamentoApi, servicesApi, crmApi, apiGet, apiPost } from '@/lib/api';
+import { filterAvailableProfessionals, isProfessionalAvailable } from '@/utils/professional-status';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { format, addMinutes, parseISO, isBefore, isAfter, setHours, setMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { combineDateTime, getCurrentDateForInput, getCurrentTimeForInput, toISOString } from '@/lib/dates';
 
 interface NewAppointmentModalProps {
   isOpen: boolean;
@@ -61,7 +63,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   const [selectedProfessional, setSelectedProfessional] = useState<Professional | null>(null);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>(
-    preSelectedDate ? format(preSelectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd')
+    preSelectedDate ? format(preSelectedDate, 'yyyy-MM-dd') : getCurrentDateForInput()
   );
   const [selectedTime, setSelectedTime] = useState<string>('');
 
@@ -87,7 +89,11 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
       ]);
 
       if (customersRes.success) setCustomers(customersRes.data);
-      if (professionalsRes.success) setProfessionals(professionalsRes.data);
+      if (professionalsRes.success) {
+        // Filtrar apenas profissionais disponíveis
+        const availableProfessionals = filterAvailableProfessionals(professionalsRes.data, false);
+        setProfessionals(availableProfessionals);
+      }
       if (servicesRes.success) setServices(servicesRes.data);
 
       // Auto-select pre-selected professional
@@ -132,7 +138,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
     setSelectedCustomer(null);
     setSelectedProfessional(preSelectedProfessional ? professionals.find(p => p.id === preSelectedProfessional) || null : null);
     setSelectedService(null);
-    setSelectedDate(preSelectedDate ? format(preSelectedDate, 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'));
+    setSelectedDate(preSelectedDate ? format(preSelectedDate, 'yyyy-MM-dd') : getCurrentDateForInput());
     setSelectedTime('');
     setStep('customer');
     setCustomerSearch('');
@@ -157,8 +163,8 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
 
   const handleTimeSelect = (time: string) => {
     setSelectedTime(time);
-    const startDateTime = `${selectedDate}T${time}:00`;
-    setFormData(prev => ({ ...prev, startTime: startDateTime }));
+    const startTimeISO = combineDateTime(selectedDate, time);
+    setFormData(prev => ({ ...prev, startTime: startTimeISO }));
     setStep('confirm');
   };
 
@@ -188,7 +194,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
   const getEndTime = () => {
     if (!selectedService || !selectedTime) return '';
     
-    const startDateTime = new Date(`${selectedDate}T${selectedTime}:00`);
+    const startDateTime = new Date(combineDateTime(selectedDate, selectedTime));
     const endDateTime = addMinutes(startDateTime, selectedService.duration);
     return format(endDateTime, 'HH:mm');
   };
@@ -312,7 +318,7 @@ export const NewAppointmentModal: React.FC<NewAppointmentModalProps> = ({
           type="date"
           value={selectedDate}
           onChange={(e) => setSelectedDate(e.target.value)}
-          min={format(new Date(), 'yyyy-MM-dd')}
+          min={getCurrentDateForInput()}
         />
       </div>
 

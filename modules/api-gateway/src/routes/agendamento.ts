@@ -65,7 +65,7 @@ const agendamentoProxy = createProxyMiddleware({
   pathRewrite: {
     '^/api/agendamento': '/api/agendamento'
   },
-  timeout: 45000, // 45 seconds for scheduling operations
+  timeout: parseInt(process.env.TIMEOUT_GATEWAY_AGENDAMENTO || '60000', 10), // Configurable timeout for scheduling operations
   
   onProxyReq: (proxyReq, req: any, res) => {
     const requestId = req.requestId || 'unknown';

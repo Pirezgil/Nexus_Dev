@@ -47,45 +47,20 @@ export const loggingMiddleware = (req: LoggingRequest, res: Response, next: Next
   // Log the incoming request
   logger.info('Incoming request:', requestInfo);
 
-  // Override res.json to capture response
-  const originalJson = res.json;
-  const originalSend = res.send;
-  const originalEnd = res.end;
-
-  let responseBody: any = null;
+  // Simple response logging without body capture
   let responseSent = false;
+  const originalJson = res.json;
 
-  // Capture JSON responses
+  // Only capture JSON responses (most common case)
   res.json = function(body: any) {
     if (!responseSent) {
-      responseBody = body;
-      logResponse();
+      logResponse(body);
       responseSent = true;
     }
     return originalJson.call(this, body);
   };
 
-  // Capture send responses
-  res.send = function(body: any) {
-    if (!responseSent) {
-      responseBody = body;
-      logResponse();
-      responseSent = true;
-    }
-    return originalSend.call(this, body);
-  };
-
-  // Capture end responses
-  res.end = function(chunk?: any) {
-    if (!responseSent) {
-      responseBody = chunk;
-      logResponse();
-      responseSent = true;
-    }
-    return originalEnd.call(this, chunk);
-  };
-
-  const logResponse = () => {
+  const logResponse = (responseBody?: any) => {
     const endTime = Date.now();
     const duration = endTime - startTime;
     const statusCode = res.statusCode;
@@ -108,18 +83,17 @@ export const loggingMiddleware = (req: LoggingRequest, res: Response, next: Next
     if (statusCode >= 500) {
       logger.error('Server error response:', {
         ...responseInfo,
-        errorBody: typeof responseBody === 'string' ? responseBody.substring(0, 500) : responseBody,
-        stack: responseBody?.stack
+        error: responseBody?.error || responseBody?.message || 'Unknown server error'
       });
     } else if (statusCode >= 400) {
       logger.warn('Client error response:', {
         ...responseInfo,
-        errorDetails: responseBody?.error || responseBody?.message
+        error: responseBody?.error || responseBody?.message || 'Client error'
       });
     } else if (statusCode >= 300) {
       logger.info('Redirect response:', responseInfo);
     } else {
-      logger.info('Successful response:', responseInfo);
+      logger.debug('Successful response:', responseInfo);
     }
 
     // Log slow requests (over 2 seconds)
@@ -131,9 +105,9 @@ export const loggingMiddleware = (req: LoggingRequest, res: Response, next: Next
       });
     }
 
-    // Log large responses (over 1MB)
+    // Log large responses (over 5MB)
     const contentLength = parseInt(res.get('Content-Length') || '0');
-    if (contentLength > 1024 * 1024) {
+    if (contentLength > 5 * 1024 * 1024) {
       logger.warn('Large response detected:', {
         ...responseInfo,
         largeResponseAlert: true,

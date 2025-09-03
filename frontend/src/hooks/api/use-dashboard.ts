@@ -4,6 +4,7 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
 import { queryKeys } from '@/lib/query-client';
+import { getCurrentDateForInput } from '@/lib/dates';
 
 // ====================================
 // TYPES
@@ -89,47 +90,36 @@ export interface Alert {
 // ====================================
 
 const dashboardApi = {
-  // Get KPIs from new Analytics API
+  // Get KPIs - TEMPORÁRIO: retornar dados mockados até analytics ser implementado
   getStats: async (period: string) => {
     try {
-      // Use new centralized analytics endpoint
-      const response = await api.get(`/api/analytics/dashboard/kpis?period=${period}`)
+      // MOCKADO: dados de exemplo até que o serviço de analytics esteja disponível
+      await new Promise(resolve => setTimeout(resolve, 500)); // simular delay
       
-      if (response.data.success) {
-        const kpis = response.data.data
-        
-        // Convert to expected dashboard format
-        const stats: DashboardStats = {
-          revenue: {
-            current: kpis.monthlyRevenue?.value || 0,
-            previous: kpis.monthlyRevenue?.previousValue || 0,
-            trend: parseFloat(kpis.monthlyRevenue?.changePercent?.replace(/[+%]/g, '')) || 0,
-          },
-          appointments: {
-            current: kpis.completedAppointments?.value || 0,
-            previous: kpis.completedAppointments?.previousValue || 0,
-            trend: parseFloat(kpis.completedAppointments?.changePercent?.replace(/[+%]/g, '')) || 0,
-          },
-          customers: {
-            current: kpis.totalCustomers?.value || 0,
-            previous: kpis.totalCustomers?.previousValue || 0,
-            trend: parseFloat(kpis.totalCustomers?.changePercent?.replace(/[+%]/g, '')) || 0,
-          },
-          occupancy: {
-            current: kpis.bookingEfficiency || 0,
-            previous: kpis.bookingEfficiency || 0,
-            trend: 0, // TODO: Calculate trend
-          },
-          revenueChart: [],
-          appointmentsChart: [],
-          topServices: [],
-          topProfessionals: [],
-        }
-        
-        return stats
-      }
+      const stats: DashboardStats = {
+        revenue: {
+          current: 45000,
+          previous: 38000,
+          trend: 18.4,
+        },
+        appointments: {
+          current: 127,
+          previous: 98,
+          trend: 29.6,
+        },
+        customers: {
+          current: 89,
+          previous: 76,
+          trend: 17.1,
+        },
+        occupancy: {
+          current: 85,
+          previous: 78,
+          trend: 8.9,
+        },
+      };
       
-      throw new Error('Invalid response from analytics API')
+      return stats;
     } catch (error) {
       console.error('Error fetching dashboard stats from analytics API:', error)
       // Fallback to mock data
@@ -137,20 +127,21 @@ const dashboardApi = {
     }
   },
 
-  // Get revenue chart data from Analytics API  
+  // Get revenue chart data - TEMPORÁRIO: dados mockados
   getRevenueChart: async () => {
     try {
-      const response = await api.get('/api/analytics/revenue/chart')
+      // MOCKADO: dados de exemplo até que o serviço de analytics esteja disponível
+      await new Promise(resolve => setTimeout(resolve, 300));
       
-      if (response.data.success) {
-        return response.data.data.map((item: any) => ({
-          date: item.date,
-          revenue: item.revenue,
-          appointments: 0, // TODO: Add appointments count if needed
-        }))
-      }
+      const mockData = [
+        { date: '2025-01-01', revenue: 12000, appointments: 15 },
+        { date: '2025-01-02', revenue: 15000, appointments: 18 },
+        { date: '2025-01-03', revenue: 8000, appointments: 12 },
+        { date: '2025-01-04', revenue: 18000, appointments: 22 },
+        { date: '2025-01-05', revenue: 13000, appointments: 16 },
+      ];
       
-      return []
+      return mockData;
     } catch (error) {
       console.error('Error fetching revenue chart:', error)
       return []
@@ -161,7 +152,7 @@ const dashboardApi = {
     try {
       const response = await api.get('/api/agendamento/appointments', {
         params: {
-          date: new Date().toISOString().split('T')[0],
+          date: getCurrentDateForInput(),
           status: 'scheduled,confirmed,in_progress',
         }
       });
@@ -175,7 +166,7 @@ const dashboardApi = {
 
   getRecentCustomers: async (limit: number = 10) => {
     try {
-      const response = await api.get('/customers', {
+      const response = await api.get('/api/customers', {
         params: {
           limit,
           sortBy: 'createdAt',

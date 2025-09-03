@@ -88,6 +88,11 @@ export class AuthService {
     userAgent?: string;
   }): Promise<LoginResponse> {
     try {
+      logger.info('🔍 [DEBUG] Iniciando processo de login', {
+        email: data.email,
+        timestamp: new Date().toISOString()
+      });
+
       // Find user by email
       const user = await prisma.user.findUnique({
         where: { email: data.email },
@@ -104,24 +109,70 @@ export class AuthService {
       });
 
       if (!user) {
+        logger.error('❌ [DEBUG] Usuário não encontrado', { email: data.email });
         throw new UnauthorizedError('Email ou senha incorretos');
       }
 
+      logger.info('✅ [DEBUG] Usuário encontrado', {
+        userId: user.id,
+        email: user.email,
+        status: user.status,
+        emailVerified: user.emailVerified,
+        hasPassword: !!user.password,
+        passwordLength: user.password?.length || 0,
+        passwordHash: user.password?.substring(0, 10) + '...',
+        companyActive: user.company.isActive
+      });
+
       // Check if user is active - TEMPORARILY DISABLED FOR TESTING
       // if (user.status !== 'ACTIVE') {
+      //   logger.error('❌ [DEBUG] Usuário com status inativo', { 
+      //     userId: user.id, 
+      //     status: user.status 
+      //   });
       //   throw new UnauthorizedError('Usuário inativo ou suspenso');
       // }
 
       // Check if company is active
       if (!user.company.isActive) {
+        logger.error('❌ [DEBUG] Empresa inativa', { 
+          companyId: user.company.id,
+          isActive: user.company.isActive 
+        });
         throw new UnauthorizedError('Empresa inativa');
       }
 
+      logger.info('🔐 [DEBUG] Iniciando verificação de senha', {
+        inputPassword: data.password,
+        storedHash: user.password,
+        inputPasswordLength: data.password.length,
+        storedHashLength: user.password.length
+      });
+
       // Verify password
       const isPasswordValid = await bcrypt.compare(data.password, user.password);
+      
+      logger.info('🔐 [DEBUG] Resultado da verificação de senha', {
+        isPasswordValid,
+        bcryptVersion: require('bcryptjs/package.json').version,
+        inputPassword: data.password,
+        storedHash: user.password
+      });
+
       if (!isPasswordValid) {
+        logger.error('❌ [DEBUG] Senha inválida', {
+          userId: user.id,
+          email: user.email,
+          inputPassword: data.password,
+          storedHash: user.password
+        });
         throw new UnauthorizedError('Email ou senha incorretos');
       }
+
+      logger.info('✅ [DEBUG] Senha válida, prosseguindo com login', {
+        userId: user.id,
+        email: user.email
+      });
 
       // Create session
       const sessionId = uuidv4();

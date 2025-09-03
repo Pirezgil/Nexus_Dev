@@ -12,7 +12,7 @@ import { agendamentoRoutes } from './routes/agendamento';
 import { analyticsRoutes } from './routes/analytics';
 import { authMiddleware } from './middleware/auth';
 import { loggingMiddleware } from './middleware/logging';
-import { healthCheckRouter } from './utils/healthCheck';
+import healthCheckRouter from './utils/healthCheck';
 import { logger } from './utils/logger';
 
 // Load environment variables
@@ -50,18 +50,32 @@ app.use(compression({
   level: 6
 }));
 
-// Parse JSON with size limit
-app.use(express.json({ 
-  limit: '10mb',
-  verify: (req: any, _res: any, buf) => {
-    req.rawBody = buf;
+// Parse JSON with size limit - SKIP for proxy routes to prevent body consumption
+app.use((req, res, next) => {
+  // Skip body parsing for services routes (handled by proxy)
+  if (req.path.startsWith('/api/services')) {
+    return next();
   }
-}));
+  
+  express.json({ 
+    limit: '10mb',
+    verify: (req: any, _res: any, buf) => {
+      req.rawBody = buf;
+    }
+  })(req, res, next);
+});
 
-app.use(express.urlencoded({ 
-  extended: true, 
-  limit: '10mb' 
-}));
+app.use((req, res, next) => {
+  // Skip body parsing for services routes (handled by proxy)
+  if (req.path.startsWith('/api/services')) {
+    return next();
+  }
+  
+  express.urlencoded({ 
+    extended: true, 
+    limit: '10mb' 
+  })(req, res, next);
+});
 
 // CORS Configuration - Centralized for all modules
 app.use(cors({
@@ -96,7 +110,7 @@ const globalRateLimit = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req: Request): boolean => {
+  skip: (_req: Request): boolean => {
     // Skip rate limiting in development environment
     return process.env.NODE_ENV === 'development';
   },
@@ -127,7 +141,7 @@ app.use((req: any, res: Response, next: NextFunction) => {
 app.use('/health', healthCheckRouter);
 
 // Basic ping endpoint
-app.get('/ping', (req: Request, res: Response) => {
+app.get('/ping', (_req: Request, res: Response) => {
   res.status(200).json({
     success: true,
     message: 'API Gateway is running',
@@ -140,15 +154,14 @@ app.get('/ping', (req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 
 // ==== PROTECTED ROUTES (Require Authentication) ====
-// CORREÇÃO: O authMiddleware já está sendo aplicado aqui, mas o proxy nos routes está interceptando antes
-// Vamos manter esta configuração e corrigir nos routes individuais
+// Services routes handle authentication via proxy middleware (see routes/services.ts)
 app.use('/api/crm', authMiddleware, crmRoutes);
-app.use('/api/services', authMiddleware, servicesRoutes);  
+app.use('/api/services', servicesRoutes);  // Auth handled in proxy middleware
 app.use('/api/agendamento', authMiddleware, agendamentoRoutes);
 app.use('/api/analytics', authMiddleware, analyticsRoutes);
 
 // ==== GLOBAL ERROR HANDLING ====
-app.use((err: GatewayError, req: Request, res: Response, next: NextFunction) => {
+app.use((err: GatewayError, req: Request, res: Response, _next: NextFunction) => {
   const requestId = (req as any).requestId;
   
   logger.error('API Gateway Error:', {
@@ -203,7 +216,7 @@ app.use((err: GatewayError, req: Request, res: Response, next: NextFunction) => 
 
   // Default error
   const status = err.status || 500;
-  res.status(status).json({
+  return res.status(status).json({
     success: false,
     error: status === 500 ? 'Internal server error' : err.message,
     code: err.code || 'GATEWAY_ERROR',

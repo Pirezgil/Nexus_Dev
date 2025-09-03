@@ -19,7 +19,6 @@ class RedisManager {
         url: config.redisUrl,
         socket: {
           connectTimeout: 5000,
-          lazyConnect: true,
           reconnectStrategy: (retries) => {
             if (retries >= this.maxReconnectAttempts) {
               logger.error('Redis: Maximum reconnection attempts reached');
@@ -31,7 +30,7 @@ class RedisManager {
             return delay;
           },
         },
-        retry_unfulfilled_commands: true,
+        // retry_unfulfilled_commands: true,
       });
 
       this.setupEventListeners();

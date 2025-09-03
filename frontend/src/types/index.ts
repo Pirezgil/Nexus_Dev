@@ -14,9 +14,9 @@ export interface User {
   role: 'ADMIN' | 'MANAGER' | 'USER' | 'VIEWER';
   companyId: string;
   status: 'ACTIVE' | 'INACTIVE';
-  lastLoginAt?: string;
-  createdAt: string;
-  updatedAt: string;
+  lastLoginAt?: string; // ✅ ISO 8601 string from API
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
   // Computed property for display
   name?: string;
 }
@@ -46,20 +46,32 @@ export interface LoginResponse {
 // ====================================
 // CRM TYPES
 // ====================================
+
+// Interface para endereço estruturado (alinhada com schema do backend)
+export interface Address {
+  street: string;
+  number: string;
+  complement?: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+  zipcode: string;
+}
+
 export interface Customer {
   id: string;
   name: string;
   email: string;
   phone: string;
   document: string;
-  birthDate?: string;
-  address: string;
+  birthDate?: string; // ✅ ISO 8601 date string (YYYY-MM-DD) or null
+  address: Address | null; // ✅ NOVA: Estrutura de endereço completa
   notes?: string;
   tags: string[];
   status: 'ACTIVE' | 'INACTIVE';
   companyId: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
   _count?: {
     notes: number;
     interactions: number;
@@ -73,14 +85,14 @@ export interface CustomerNote {
   customerId: string;
   userId: string;
   user: Pick<User, 'id' | 'name'>;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
 }
 
 export interface CustomerInteraction {
   id: string;
-  type: 'CALL' | 'EMAIL' | 'WHATSAPP' | 'VISIT' | 'OTHER';
-  description: string;
+  type: 'CALL' | 'EMAIL' | 'MEETING' | 'WHATSAPP' | 'SMS' | 'NOTE' | 'TASK' | 'VISIT' | 'OTHER';
+  description?: string;
   date: string;
   customerId: string;
   userId: string;
@@ -91,18 +103,22 @@ export interface CustomerInteraction {
 // ====================================
 // SERVICES TYPES
 // ====================================
+export type ServiceStatus = 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
+
 export interface Service {
   id: string;
   name: string;
   description: string;
-  price: number;
+  price: string; // ✅ DECIMAL PRECISION: Changed from number to string
   duration: number; // em minutos
   category: string;
-  isActive: boolean;
+  status: ServiceStatus;
   companyId: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
 }
+
+export type ProfessionalStatus = 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
 
 export interface Professional {
   id: string;
@@ -119,11 +135,11 @@ export interface Professional {
     saturday: { start: string; end: string; active: boolean };
     sunday: { start: string; end: string; active: boolean };
   };
-  isActive: boolean;
+  status: ProfessionalStatus;
   companyId: string;
   userId?: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
 }
 
 export interface CompletedAppointment {
@@ -133,17 +149,17 @@ export interface CompletedAppointment {
   professionalId: string;
   professional: Pick<Professional, 'id' | 'name'>;
   serviceId: string;
-  service: Pick<Service, 'id' | 'name' | 'price'>;
+  service: Pick<Service, 'id' | 'name' | 'price'>; // price is now string for precision
   startTime: string;
   endTime: string;
   observations: string;
   paymentStatus: 'PENDING' | 'PAID' | 'CANCELLED';
   paymentMethod: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX' | 'OTHER';
-  totalAmount: number;
+  totalAmount: string; // ✅ DECIMAL PRECISION: Changed from number to string
   photos: ServicePhoto[];
   companyId: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
 }
 
 export interface ServicePhoto {
@@ -169,22 +185,22 @@ export interface Appointment {
   professionalId: string;
   professional: Pick<Professional, 'id' | 'name'>;
   serviceId: string;
-  service: Pick<Service, 'id' | 'name' | 'duration' | 'price'>;
-  startTime: string;
-  endTime: string;
+  service: Pick<Service, 'id' | 'name' | 'duration' | 'price'>; // price is now string for precision
+  startTime: string; // ✅ ISO 8601 string from API
+  endTime: string; // ✅ ISO 8601 string from API
   status: 'SCHEDULED' | 'CONFIRMED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
   notes?: string;
   reminderSent: boolean;
   companyId: string;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
 }
 
 export interface CalendarAvailability {
   professional: Professional;
-  date: string;
+  date: string; // ✅ ISO 8601 date string (YYYY-MM-DD)
   slots: {
-    time: string;
+    time: string; // ✅ Time in HH:mm format
     available: boolean;
     reason?: string;
   }[];
@@ -193,11 +209,13 @@ export interface CalendarAvailability {
 export interface ScheduleBlock {
   id: string;
   professionalId: string;
-  startTime: string;
-  endTime: string;
+  startTime: string; // ✅ ISO 8601 string from API
+  endTime: string; // ✅ ISO 8601 string from API
   reason: string;
   type: 'BREAK' | 'UNAVAILABLE' | 'VACATION' | 'OTHER';
   companyId: string;
+  createdAt: string; // ✅ ISO 8601 string from API
+  updatedAt: string; // ✅ ISO 8601 string from API
 }
 
 // ====================================
@@ -226,7 +244,7 @@ export interface CustomerFormData {
   email: string;
   phone: string;
   document?: string;
-  birthDate?: string;
+  birthDate?: string; // ✅ ISO 8601 date string (YYYY-MM-DD) or null
   address?: string;
   notes?: string;
 }
@@ -234,9 +252,10 @@ export interface CustomerFormData {
 export interface ServiceFormData {
   name: string;
   description?: string;
-  price: number;
+  price: string; // ✅ DECIMAL PRECISION: Changed from number to string
   duration: number;
   category: string;
+  status?: ServiceStatus;
 }
 
 export interface ProfessionalFormData {
@@ -245,13 +264,14 @@ export interface ProfessionalFormData {
   phone: string;
   specialties: string[];
   workSchedule: Professional['workSchedule'];
+  status: ProfessionalStatus;
 }
 
 export interface AppointmentFormData {
   customerId: string;
   professionalId: string;
   serviceId: string;
-  startTime: string;
+  startTime: string; // ✅ ISO 8601 string to send to API
   notes?: string;
 }
 
@@ -263,14 +283,14 @@ export interface CustomerFilters {
   status?: 'ACTIVE' | 'INACTIVE';
   tags?: string[];
   dateRange?: {
-    start: string;
-    end: string;
+    start: string; // ✅ ISO 8601 date string
+    end: string; // ✅ ISO 8601 date string
   };
 }
 
 export interface AppointmentFilters {
-  startDate?: string;
-  endDate?: string;
+  startDate?: string; // ✅ ISO 8601 date string
+  endDate?: string; // ✅ ISO 8601 date string
   professionalId?: string;
   status?: Appointment['status'];
   customerId?: string;
@@ -338,6 +358,7 @@ export interface AuthStore {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  status: 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => void;
   refreshAuth: () => Promise<void>;
@@ -347,10 +368,13 @@ export interface AuthStore {
 
 export interface UIStore {
   sidebarOpen: boolean;
+  sidebarCollapsed: boolean;
   theme: 'light' | 'dark';
   toasts: ToastMessage[];
   setSidebarOpen: (open: boolean) => void;
   toggleSidebar: () => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
+  toggleSidebarCollapsed: () => void;
   setTheme: (theme: 'light' | 'dark') => void;
   addToast: (toast: Omit<ToastMessage, 'id'>) => void;
   removeToast: (id: string) => void;

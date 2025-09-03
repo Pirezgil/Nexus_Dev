@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { appointmentController } from '../controllers/appointmentController';
-import { authenticate, authorize, requireCompanyAccess } from '../middleware/auth';
+import { authenticate, authorize, requireCompanyAccess } from '../middleware/authCompat';
 import { validate, validatePagination } from '../middleware/validation';
 import { uploadMultiple } from '../middleware/upload';
 import { AppointmentCreateSchema, AppointmentUpdateSchema } from '../types';

@@ -4,14 +4,12 @@
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 import { ApiResponse } from '@/types';
 
-// ✅ UNIFIED API GATEWAY ARCHITECTURE
-// All requests go through the centralized API Gateway via Next.js rewrites
-// IMPORTANT: Empty base URL to use relative paths and enable Next.js rewrites
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+// ✅ UNIFIED API GATEWAY ARCHITECTURE  
+// Configuração dinâmica de URL baseada no ambiente
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || process.env.NEXT_PUBLIC_API_URL || '';
 
 console.log('🔧 API Configuration:', {
   baseURL: API_BASE_URL || '(using relative paths for Next.js rewrites)',
-  env: process.env.NODE_ENV,
   rewritesActive: !API_BASE_URL
 });
 
@@ -47,7 +45,7 @@ const processQueue = (error: any, token: string | null = null) => {
 const createApiInstance = (baseURL: string): AxiosInstance => {
   const instance = axios.create({
     baseURL,
-    timeout: 30000,
+    timeout: parseInt(process.env.NEXT_PUBLIC_TIMEOUT_API_CLIENT || '30000', 10),
     headers: {
       'Content-Type': 'application/json',
     },
@@ -171,13 +169,15 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
   return instance;
 };
 
-// ✅ SINGLE API INSTANCE - All requests through Gateway
+// ✅ API INSTANCES - Unified configuration
 export const api = createApiInstance(API_BASE_URL);
 
-// Legacy compatibility - all point to gateway now
+// Services API - All requests go through Gateway on port 5001
+export const servicesApi = api;
+
+// Legacy compatibility - all point to gateway or direct services
 export const userManagementApi = api;
 export const crmApi = api;
-export const servicesApi = api;
 export const agendamentoApi = api;
 
 // ====================================
@@ -221,7 +221,7 @@ const refreshAuthToken = async (): Promise<void> => {
     // Criar uma instância separada para evitar loop infinito no interceptor
     const refreshInstance = axios.create({
       baseURL: API_BASE_URL,
-      timeout: 10000,
+      timeout: parseInt(process.env.NEXT_PUBLIC_TIMEOUT_QUICK_OPERATIONS || '10000', 10),
     });
 
     const response = await refreshInstance.post(`${API_ROUTES.auth}/refresh`, { refreshToken });
@@ -450,39 +450,39 @@ export const crmApiMethods = {
 };
 
 export const servicesApiMethods = {
-  // Services CRUD
-  getServices: (params?: any) => apiGet(api, `${API_ROUTES.services}/services`, params),
-  getService: (id: string) => apiGet(api, `${API_ROUTES.services}/services/${id}`),
-  createService: (data: any) => apiPost(api, `${API_ROUTES.services}/services`, data),
-  updateService: (id: string, data: any) => apiPut(api, `${API_ROUTES.services}/services/${id}`, data),
-  deleteService: (id: string) => apiDelete(api, `${API_ROUTES.services}/services/${id}`),
+  // Services CRUD - All through API Gateway
+  getServices: (params?: any) => apiGet(servicesApi, `${API_ROUTES.services}`, params),
+  getService: (id: string) => apiGet(servicesApi, `${API_ROUTES.services}/${id}`),
+  createService: (data: any) => apiPost(servicesApi, `${API_ROUTES.services}`, data),
+  updateService: (id: string, data: any) => apiPut(servicesApi, `${API_ROUTES.services}/${id}`, data),
+  deleteService: (id: string) => apiDelete(servicesApi, `${API_ROUTES.services}/${id}`),
   
   // Services list and search
-  getServicesList: (params?: any) => apiGet(api, `${API_ROUTES.services}/list`, params),
-  searchServices: (params?: any) => apiGet(api, `${API_ROUTES.services}/services/search`, params),
+  getServicesList: (params?: any) => apiGet(servicesApi, '/api/services/list', params),
+  searchServices: (params?: any) => apiGet(servicesApi, '/api/services/search', params),
   
   // Professionals CRUD
-  getProfessionals: (params?: any) => apiGet(api, `${API_ROUTES.services}/professionals`, params),
-  getProfessional: (id: string) => apiGet(api, `${API_ROUTES.services}/professionals/${id}`),
-  createProfessional: (data: any) => apiPost(api, `${API_ROUTES.services}/professionals`, data),
-  updateProfessional: (id: string, data: any) => apiPut(api, `${API_ROUTES.services}/professionals/${id}`, data),
-  deleteProfessional: (id: string) => apiDelete(api, `${API_ROUTES.services}/professionals/${id}`),
+  getProfessionals: (params?: any) => apiGet(servicesApi, '/api/professionals', params),
+  getProfessional: (id: string) => apiGet(servicesApi, `/api/professionals/${id}`),
+  createProfessional: (data: any) => apiPost(servicesApi, '/api/professionals', data),
+  updateProfessional: (id: string, data: any) => apiPut(servicesApi, `/api/professionals/${id}`, data),
+  deleteProfessional: (id: string) => apiDelete(servicesApi, `/api/professionals/${id}`),
   
   // Professionals list and availability
-  getProfessionalsList: (params?: any) => apiGet(api, `${API_ROUTES.services}/professionals/list`, params),
-  getProfessionalAvailability: (id: string, params?: any) => apiGet(api, `${API_ROUTES.services}/professionals/${id}/availability`, params),
-  updateProfessionalSchedule: (id: string, data: any) => apiPut(api, `${API_ROUTES.services}/professionals/${id}/schedule`, data),
+  getProfessionalsList: (params?: any) => apiGet(servicesApi, '/api/professionals/list', params),
+  getProfessionalAvailability: (id: string, params?: any) => apiGet(servicesApi, `/api/professionals/${id}/availability`, params),
+  updateProfessionalSchedule: (id: string, data: any) => apiPut(servicesApi, `/api/professionals/${id}/schedule`, data),
   
   // Professional services relationship
-  getProfessionalServices: (professionalId: string) => apiGet(api, `${API_ROUTES.services}/professionals/${professionalId}/services`),
-  addServiceToProfessional: (professionalId: string, data: any) => apiPost(api, `${API_ROUTES.services}/professionals/${professionalId}/services`, data),
-  removeServiceFromProfessional: (professionalId: string, serviceId: string) => apiDelete(api, `${API_ROUTES.services}/professionals/${professionalId}/services/${serviceId}`),
+  getProfessionalServices: (professionalId: string) => apiGet(servicesApi, `/api/professionals/${professionalId}/services`),
+  addServiceToProfessional: (professionalId: string, data: any) => apiPost(servicesApi, `/api/professionals/${professionalId}/services`, data),
+  removeServiceFromProfessional: (professionalId: string, serviceId: string) => apiDelete(servicesApi, `/api/professionals/${professionalId}/services/${serviceId}`),
   
   // Categories
-  getCategories: () => apiGet(api, `${API_ROUTES.services}/categories`),
-  createCategory: (data: any) => apiPost(api, `${API_ROUTES.services}/categories`, data),
-  updateCategory: (id: string, data: any) => apiPut(api, `${API_ROUTES.services}/categories/${id}`, data),
-  deleteCategory: (id: string) => apiDelete(api, `${API_ROUTES.services}/categories/${id}`),
+  getCategories: () => apiGet(servicesApi, '/api/categories'),
+  createCategory: (data: any) => apiPost(servicesApi, '/api/categories', data),
+  updateCategory: (id: string, data: any) => apiPut(servicesApi, `/api/categories/${id}`, data),
+  deleteCategory: (id: string) => apiDelete(servicesApi, `/api/categories/${id}`),
 };
 
 export const agendamentoApiMethods = {

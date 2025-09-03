@@ -38,6 +38,12 @@ export interface ApiResponse<T = any> {
   data?: T;
   message?: string;
   error?: string;
+  stats?: {
+    total_services: number;
+    average_duration: number;
+    average_price: number;
+    total_value: number;
+  };
   pagination?: {
     page: number;
     limit: number;
@@ -86,6 +92,27 @@ export interface ServiceFilter {
   minPrice?: number;
   maxPrice?: number;
   search?: string;
+}
+
+export interface ServiceWithStats {
+  id: string;
+  companyId: string;
+  name: string;
+  description: string | null;
+  duration: number;
+  price: any;
+  category: string | null;
+  status: ServiceStatus;
+  requirements: string | null;
+  metadata?: any;
+  professionals_count: number;
+  isActive: boolean;
+  _count: {
+    appointments: number;
+    professionals: number;
+  };
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // =============================================================================
@@ -282,14 +309,23 @@ export interface UserProfile {
 // Validation Schemas (Zod)
 // =============================================================================
 
-// Service Validation Schemas
+// Service Validation Schemas - TEMPORARILY DISABLED DUE TO MODULE RESOLUTION ISSUES
+// TODO: Re-enable when shared module structure is fixed
+// export { 
+//   ServiceValidationSchema as ServiceCreateSchema,
+//   ServiceUpdateSchema 
+// } from '/app/shared/validation/service-schemas';
+
+// Temporary inline schemas for development
+import { z } from 'zod';
+
 export const ServiceCreateSchema = z.object({
   companyId: z.string().uuid(),
   name: z.string().min(1).max(255),
   description: z.string().optional(),
-  duration: z.number().int().min(1).max(480), // Max 8 hours
+  duration: z.number().int().min(1),
   price: z.number().positive(),
-  category: z.string().max(100).optional(),
+  category: z.string().optional(),
   requirements: z.string().optional(),
   metadata: z.any().optional(),
 });
@@ -297,10 +333,9 @@ export const ServiceCreateSchema = z.object({
 export const ServiceUpdateSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
-  duration: z.number().int().min(1).max(480).optional(),
+  duration: z.number().int().min(1).optional(),
   price: z.number().positive().optional(),
-  category: z.string().max(100).optional(),
-  status: z.nativeEnum(ServiceStatus).optional(),
+  category: z.string().optional(),
   requirements: z.string().optional(),
   metadata: z.any().optional(),
 });

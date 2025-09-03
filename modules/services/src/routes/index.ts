@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { logger } from '../utils/logger';
-import { authenticate } from '../middleware/auth';
 
 // Import route modules
 import healthRoutes from './healthRoutes';
@@ -15,38 +14,35 @@ const router = Router();
 /**
  * API Routes Configuration
  * 
- * All API routes are prefixed and organized by functionality
+ * Each route module handles its own authentication middleware
+ * This allows for different auth strategies (JWT vs Gateway headers)
  */
 
 // Health check routes (no authentication required)
 router.use('/health', healthRoutes);
 
-// Validation routes temporarily disabled for infrastructure setup
-
-// Apply authentication middleware to all API routes
-router.use('/api/*', authenticate);
-
-// Core business logic routes (protected by authentication)
+// Core business logic routes (authentication handled in route modules)
 router.use('/api/services', serviceRoutes);
 router.use('/api/professionals', professionalRoutes);
 router.use('/api/appointments', appointmentRoutes);
 
-// Analytics and reporting routes (protected by authentication)
+// Analytics and reporting routes (authentication handled in route modules)
 router.use('/api/reports', reportRoutes);
 
-// Integration routes for cross-module communication (protected by authentication)
+// Integration routes for cross-module communication (authentication handled in route modules)
 router.use('/api/integrations', integrationRoutes);
 
 // CORREÇÃO: Endpoints específicos para o módulo agendamento
 // O frontend do agendamento espera que os endpoints estejam em /api/services/
-router.use('/api/services', integrationRoutes);
+// router.use('/api/services', integrationRoutes); // TEMPORARIAMENTE DESABILITADO
 
-// Legacy routes for backward compatibility (without /api prefix) - also protected
-router.use('/services', authenticate, serviceRoutes);
-router.use('/professionals', authenticate, professionalRoutes);
-router.use('/appointments', authenticate, appointmentRoutes);
-router.use('/reports', authenticate, reportRoutes);
-router.use('/integrations', authenticate, integrationRoutes);
+// Legacy routes for backward compatibility (without /api prefix)
+// Each route handles its own authentication
+router.use('/services', serviceRoutes);
+router.use('/professionals', professionalRoutes);
+router.use('/appointments', appointmentRoutes);
+router.use('/reports', reportRoutes);
+router.use('/integrations', integrationRoutes);
 
 // API documentation route (if needed)
 router.get('/api/docs', (req, res) => {

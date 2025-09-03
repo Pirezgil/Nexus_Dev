@@ -6,6 +6,8 @@ import { useCallback, useState } from 'react';
 import { api } from '@/lib/api';
 import { queryKeys, optimisticUpdates, invalidateQueries, cachePresets } from '@/lib/query-client';
 import { toast } from '@/hooks/use-toast';
+import { Address } from '@/types';
+import { addressToAPIPayload, addressFromAPIResponse } from '@/utils/address';
 
 // ====================================
 // TYPES & INTERFACES
@@ -18,10 +20,7 @@ export interface Customer {
   phone?: string;
   document?: string;
   birthDate?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zipCode?: string;
+  address: Address | null; // ✅ ATUALIZADO: Estrutura de endereço completa
   status: 'ACTIVE' | 'INACTIVE' | 'PROSPECT' | 'BLOCKED';
   tags: string[];
   notes?: string;
@@ -142,7 +141,13 @@ const customersApi = {
   // Get customer by ID with full details
   getById: async (id: string): Promise<Customer> => {
     const response = await api.get(`/api/crm/customers/${id}`);
-    return response.data.data || response.data;
+    const data = response.data.data || response.data;
+    
+    // Converter endereço da API para estrutura frontend
+    return {
+      ...data,
+      address: addressFromAPIResponse(data.address || data)
+    };
   },
 
   // Get customer basic info (lightweight)
@@ -153,14 +158,40 @@ const customersApi = {
 
   // Create new customer
   create: async (data: Omit<Customer, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>): Promise<Customer> => {
-    const response = await api.post('/api/crm/customers', data);
-    return response.data.data || response.data;
+    // Converter endereço para payload da API
+    const apiPayload = {
+      ...data,
+      ...addressToAPIPayload(data.address),
+      address: undefined // Remover campo address estruturado
+    };
+    
+    const response = await api.post('/api/crm/customers', apiPayload);
+    const responseData = response.data.data || response.data;
+    
+    // Converter resposta da API de volta para estrutura frontend
+    return {
+      ...responseData,
+      address: addressFromAPIResponse(responseData.address || responseData)
+    };
   },
 
   // Update customer
   update: async ({ id, data }: { id: string; data: Partial<Customer> }): Promise<Customer> => {
-    const response = await api.put(`/api/crm/customers/${id}`, data);
-    return response.data.data || response.data;
+    // Converter endereço para payload da API se presente
+    const apiPayload = {
+      ...data,
+      ...(data.address ? addressToAPIPayload(data.address) : {}),
+      address: undefined // Remover campo address estruturado
+    };
+    
+    const response = await api.put(`/api/crm/customers/${id}`, apiPayload);
+    const responseData = response.data.data || response.data;
+    
+    // Converter resposta da API de volta para estrutura frontend
+    return {
+      ...responseData,
+      address: addressFromAPIResponse(responseData.address || responseData)
+    };
   },
 
   // Delete customer

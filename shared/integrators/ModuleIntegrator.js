@@ -3,9 +3,29 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ModuleIntegrator = void 0;
+exports.BatchValidationError = exports.ModuleIntegrator = void 0;
 const axios_1 = __importDefault(require("axios"));
 const logger_1 = require("../utils/logger");
+
+/**
+ * Classe de erro customizada para falhas de validação em lote
+ * Fornece informações detalhadas sobre qual validação falhou e por quê
+ */
+class BatchValidationError extends Error {
+    constructor(message, failedValidationKey, originalError, failedValidationType) {
+        super(message);
+        this.failedValidationKey = failedValidationKey;
+        this.originalError = originalError;
+        this.failedValidationType = failedValidationType;
+        this.name = 'BatchValidationError';
+        
+        // Mantém o stack trace adequado onde o erro foi lançado (apenas disponível no V8)
+        if (Error.captureStackTrace) {
+            Error.captureStackTrace(this, BatchValidationError);
+        }
+    }
+}
+exports.BatchValidationError = BatchValidationError;
 class ModuleIntegrator {
     static async validateCustomer(customerId, companyId) {
         try {
@@ -120,10 +140,20 @@ class ModuleIntegrator {
                 },
                 timeout: 5000
             });
-            return {
-                exists: response.data.exists,
-                data: response.data.company
-            };
+            // Handle both old and new response formats
+            if (response.data.success !== undefined) {
+                // New format from company validation endpoint
+                return {
+                    exists: response.data.success,
+                    data: response.data.data
+                };
+            } else {
+                // Legacy format
+                return {
+                    exists: response.data.exists,
+                    data: response.data.company
+                };
+            }
         }
         catch (error) {
             this.logger.error(`Failed to validate company ${companyId}:`, error.message);
@@ -162,37 +192,97 @@ class ModuleIntegrator {
             };
         }
     }
-    static async validateBatch(validations) {
+    /**
+     * Método auxiliar para executar uma única validação baseada no tipo
+     * Método interno para centralizar a lógica de validação
+     */
+    static async executeValidation(validation) {
+        switch (validation.type) {
+            case 'customer':
+                return await this.validateCustomer(validation.id, validation.companyId);
+            case 'professional':
+                return await this.validateProfessional(validation.id, validation.companyId);
+            case 'service':
+                return await this.validateService(validation.id, validation.companyId);
+            case 'user':
+                return await this.validateUser(validation.id, validation.companyId);
+            case 'company':
+                return await this.validateCompany(validation.id);
+            case 'appointment':
+                return await this.validateAppointment(validation.id, validation.companyId);
+            default:
+                throw new Error(`Tipo de validação desconhecido: ${validation.type}`);
+        }
+    }
+
+    /**
+     * Validar múltiplas referências de uma vez (validação em lote)
+     * ATÔMICO FAIL-FAST: Se qualquer validação falhar, todo o lote falha imediatamente
+     */
+    static async validateBatch(validations, options = {}) {
+        const { failFast = true, validateReferences = true } = options;
+        
         this.logger.info(`Batch validation for ${validations.length} references`);
+
+        if (validations.length === 0) {
+            return {};
+        }
+
         const results = {};
-        const promises = validations.map(async (validation) => {
-            let result;
-            switch (validation.type) {
-                case 'customer':
-                    result = await this.validateCustomer(validation.id, validation.companyId);
-                    break;
-                case 'professional':
-                    result = await this.validateProfessional(validation.id, validation.companyId);
-                    break;
-                case 'service':
-                    result = await this.validateService(validation.id, validation.companyId);
-                    break;
-                case 'user':
-                    result = await this.validateUser(validation.id, validation.companyId);
-                    break;
-                case 'company':
-                    result = await this.validateCompany(validation.id);
-                    break;
-                case 'appointment':
-                    result = await this.validateAppointment(validation.id, validation.companyId);
-                    break;
-                default:
-                    result = { exists: false, error: 'Unknown validation type' };
+        
+        // EXECUÇÃO SEQUENCIAL COM COMPORTAMENTO FAIL-FAST
+        // Isso garante atomicidade: ou TODAS as validações passam, ou a operação falha imediatamente
+        for (const validation of validations) {
+            try {
+                const result = await this.executeValidation(validation);
+                
+                // Verificar se a validação falhou (referência não existe ou tem erro)
+                // Os métodos individuais de validação retornam { exists: false, error: ... } em caso de falha
+                if (validateReferences && (!result.exists || result.error)) {
+                    const errorMessage = result.error || `${validation.type} com ID '${validation.id}' não existe`;
+                    
+                    if (failFast) {
+                        // FAIL-FAST: Lançar imediatamente para prevenir validações subsequentes
+                        throw new BatchValidationError(
+                            `Validação em lote falhou na chave '${validation.key}': ${errorMessage}`,
+                            validation.key,
+                            result.error || new Error(`Referência não encontrada: ${validation.type}/${validation.id}`),
+                            validation.type
+                        );
+                    } else {
+                        // Modo não fail-fast: coletar o erro mas continuar
+                        results[validation.key] = result;
+                        continue;
+                    }
+                }
+                
+                results[validation.key] = result;
+                
+            } catch (error) {
+                // Lidar com erros inesperados (problemas de rede, etc.)
+                if (failFast) {
+                    // FAIL-FAST: Encapsular erros inesperados em BatchValidationError e lançar
+                    if (error instanceof BatchValidationError) {
+                        throw error; // Re-lançar nosso erro customizado
+                    }
+                    
+                    throw new BatchValidationError(
+                        `Validação em lote falhou na chave '${validation.key}': ${error.message}`,
+                        validation.key,
+                        error,
+                        validation.type
+                    );
+                } else {
+                    // Modo não fail-fast: coletar o erro mas continuar
+                    results[validation.key] = {
+                        exists: false,
+                        error: error.message || 'Validação falhou'
+                    };
+                }
             }
-            results[validation.key] = result;
-        });
-        await Promise.all(promises);
-        this.logger.info(`Batch validation completed: ${Object.keys(results).length} results`);
+        }
+        
+        this.logger.info(`Batch validation completed successfully: ${Object.keys(results).length} results`);
         return results;
     }
     static async healthCheck() {
@@ -221,7 +311,7 @@ class ModuleIntegrator {
 exports.ModuleIntegrator = ModuleIntegrator;
 ModuleIntegrator.logger = new logger_1.Logger('ModuleIntegrator');
 ModuleIntegrator.endpoints = {
-    auth: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    auth: process.env.USER_MANAGEMENT_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
     crm: process.env.CRM_SERVICE_URL || 'http://localhost:3002',
     services: process.env.SERVICES_SERVICE_URL || 'http://localhost:3003',
     agendamento: process.env.AGENDAMENTO_SERVICE_URL || 'http://localhost:3004'

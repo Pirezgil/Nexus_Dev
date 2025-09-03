@@ -44,6 +44,10 @@ export function DataTable<TData, TValue>({
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([]);
 
+  // Default pagination if not provided
+  const defaultPagination = { pageIndex: 0, pageSize: 10 };
+  const currentPagination = pagination || defaultPagination;
+
   const table = useReactTable({
     data,
     columns,
@@ -53,9 +57,9 @@ export function DataTable<TData, TValue>({
     onSortingChange: setSorting,
     state: {
       sorting,
-      pagination,
+      pagination: currentPagination,
     },
-    pageCount: totalCount ? Math.ceil(totalCount / (pagination?.pageSize || 10)) : -1,
+    pageCount: totalCount ? Math.ceil(totalCount / currentPagination.pageSize) : -1,
     manualPagination: !!onPaginationChange,
     onPaginationChange,
   });

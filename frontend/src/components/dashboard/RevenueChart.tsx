@@ -75,13 +75,16 @@ const formatDateLabel = (dateString: string, period: string): string => {
   }
 };
 
-const formatCurrency = (value: number): string => {
+const formatCurrency = (value: string | number): string => {
+  const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(numericValue)) return 'R$ 0';
+  
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(value);
+  }).format(numericValue);
 };
 
 // ====================================

@@ -4,349 +4,226 @@ import { logger } from './logger';
 
 export const healthCheckRouter = Router();
 
-interface ServiceConfig {
+interface ServiceStatus {
   name: string;
   url: string;
-  timeout?: number;
-  criticalService?: boolean;
-}
-
-interface ServiceHealth {
-  service: string;
   status: 'healthy' | 'unhealthy' | 'unreachable';
-  responseTime: number;
-  details?: any;
+  responseTime?: number;
   error?: string;
-  url: string;
-  timestamp: string;
+  version?: string;
 }
 
-interface GatewayHealth {
-  status: 'healthy' | 'degraded' | 'critical';
+interface HealthCheckResponse {
+  status: 'healthy' | 'degraded' | 'unhealthy';
   timestamp: string;
-  version: string;
   uptime: number;
-  services: ServiceHealth[];
-  gateway: {
-    memory: NodeJS.MemoryUsage;
-    cpu?: any;
-    environment: string;
-  };
-  summary: {
-    total: number;
-    healthy: number;
-    unhealthy: number;
-    unreachable: number;
+  version: string;
+  environment: string;
+  services: ServiceStatus[];
+  system: {
+    memory: {
+      used: number;
+      total: number;
+      percentage: number;
+    };
+    uptime: number;
+    nodeVersion: string;
   };
 }
 
-// Service configuration
-const SERVICES: ServiceConfig[] = [
-  {
-    name: 'user-management',
-    url: process.env.USER_MANAGEMENT_URL || 'http://localhost:5003',
-    timeout: 5000,
-    criticalService: true
-  },
-  {
-    name: 'crm',
-    url: process.env.CRM_URL || 'http://localhost:5004',
-    timeout: 5000,
-    criticalService: false
-  },
-  {
-    name: 'services',
-    url: process.env.SERVICES_URL || 'http://localhost:5005',
-    timeout: 5000,
-    criticalService: false
-  },
-  {
-    name: 'agendamento',
-    url: process.env.AGENDAMENTO_URL || 'http://localhost:5002',
-    timeout: 5000,
-    criticalService: false
-  }
-];
-
-/**
- * Check health of a single service
- */
-async function checkServiceHealth(serviceConfig: ServiceConfig): Promise<ServiceHealth> {
+const checkService = async (name: string, url: string, timeout = 5000): Promise<ServiceStatus> => {
   const startTime = Date.now();
-  const healthUrl = `${serviceConfig.url}/health`;
   
   try {
-    const response = await fetch(healthUrl, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    
+    const response = await fetch(`${url}/health`, {
       method: 'GET',
-      timeout: serviceConfig.timeout || 5000,
+      signal: controller.signal,
       headers: {
-        'Accept': 'application/json',
-        'X-Health-Check': 'gateway',
-        'X-Source': 'nexus-api-gateway'
+        'User-Agent': 'nexus-api-gateway-health-check'
       }
-    });
+    } as any);
     
+    clearTimeout(timeoutId);
     const responseTime = Date.now() - startTime;
-    const isHealthy = response.ok;
     
-    let details: any = {};
-    try {
-      details = await response.json();
-    } catch (parseError) {
-      details = { rawResponse: await response.text().catch(() => 'Unable to parse response') };
+    if (response.ok) {
+      const data = await response.json() as any;
+      return {
+        name,
+        url,
+        status: 'healthy',
+        responseTime,
+        version: data?.version || 'unknown'
+      };
+    } else {
+      return {
+        name,
+        url,
+        status: 'unhealthy',
+        responseTime,
+        error: `HTTP ${response.status}`
+      };
     }
-
-    return {
-      service: serviceConfig.name,
-      status: isHealthy ? 'healthy' : 'unhealthy',
-      responseTime,
-      details,
-      url: serviceConfig.url,
-      timestamp: new Date().toISOString()
-    };
-    
   } catch (error: any) {
     const responseTime = Date.now() - startTime;
     
+    let errorMessage = error.message;
+    if (error.name === 'AbortError') {
+      errorMessage = `Timeout after ${timeout}ms`;
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Connection refused';
+    }
+    
     return {
-      service: serviceConfig.name,
+      name,
+      url,
       status: 'unreachable',
       responseTime,
-      error: error.message,
-      url: serviceConfig.url,
-      timestamp: new Date().toISOString()
+      error: errorMessage
     };
   }
-}
+};
 
-/**
- * Determine overall system health status
- */
-function determineOverallHealth(serviceHealths: ServiceHealth[]): 'healthy' | 'degraded' | 'critical' {
-  const criticalServices = SERVICES.filter(s => s.criticalService);
-  const criticalServiceNames = criticalServices.map(s => s.name);
-  
-  // Check if any critical services are down
-  const criticalServiceHealths = serviceHealths.filter(h => criticalServiceNames.includes(h.service));
-  const unhealthyCriticalServices = criticalServiceHealths.filter(h => h.status !== 'healthy');
-  
-  if (unhealthyCriticalServices.length > 0) {
-    return 'critical';
-  }
-  
-  // Check overall service health
-  const unhealthyServices = serviceHealths.filter(h => h.status !== 'healthy');
-  const totalServices = serviceHealths.length;
-  const unhealthyPercentage = (unhealthyServices.length / totalServices) * 100;
-  
-  if (unhealthyPercentage === 0) {
-    return 'healthy';
-  } else if (unhealthyPercentage < 50) {
-    return 'degraded';
-  } else {
-    return 'critical';
-  }
-}
-
-/**
- * Main health check endpoint
- */
 healthCheckRouter.get('/', async (req: Request, res: Response) => {
-  const checkStartTime = Date.now();
+  const startTime = Date.now();
+  const requestId = (req as any).requestId || 'unknown';
   
   try {
-    // Check all services in parallel
-    const servicePromises = SERVICES.map(service => checkServiceHealth(service));
-    const serviceHealths = await Promise.all(servicePromises);
+    // Get system information
+    const memUsage = process.memoryUsage();
+    const uptime = process.uptime();
     
-    // Calculate summary statistics
-    const summary = {
-      total: serviceHealths.length,
-      healthy: serviceHealths.filter(h => h.status === 'healthy').length,
-      unhealthy: serviceHealths.filter(h => h.status === 'unhealthy').length,
-      unreachable: serviceHealths.filter(h => h.status === 'unreachable').length
-    };
+    // Define services to check
+    const services = [
+      {
+        name: 'user-management',
+        url: process.env.USER_MANAGEMENT_URL || 'http://nexus-user-management:3000'
+      },
+      {
+        name: 'crm',
+        url: process.env.CRM_URL || 'http://nexus-crm:3000'
+      },
+      {
+        name: 'services',
+        url: process.env.SERVICES_URL || 'http://nexus-services:3000'
+      },
+      {
+        name: 'agendamento',
+        url: process.env.AGENDAMENTO_URL || 'http://nexus-agendamento:3000'
+      }
+    ];
+    
+    // Check all services concurrently
+    const serviceChecks = await Promise.all(
+      services.map(service => checkService(service.name, service.url))
+    );
     
     // Determine overall status
-    const overallStatus = determineOverallHealth(serviceHealths);
-    const totalCheckTime = Date.now() - checkStartTime;
+    const healthyCount = serviceChecks.filter(s => s.status === 'healthy').length;
+    const totalServices = serviceChecks.length;
     
-    const healthResponse: GatewayHealth = {
+    let overallStatus: 'healthy' | 'degraded' | 'unhealthy';
+    if (healthyCount === totalServices) {
+      overallStatus = 'healthy';
+    } else if (healthyCount > totalServices / 2) {
+      overallStatus = 'degraded';
+    } else {
+      overallStatus = 'unhealthy';
+    }
+    
+    const healthResponse: HealthCheckResponse = {
       status: overallStatus,
       timestamp: new Date().toISOString(),
+      uptime: Math.floor(uptime),
       version: process.env.npm_package_version || '1.0.0',
-      uptime: process.uptime(),
-      services: serviceHealths,
-      gateway: {
-        memory: process.memoryUsage(),
-        environment: process.env.NODE_ENV || 'development'
-      },
-      summary
+      environment: process.env.NODE_ENV || 'development',
+      services: serviceChecks,
+      system: {
+        memory: {
+          used: Math.round(memUsage.heapUsed / 1024 / 1024),
+          total: Math.round(memUsage.heapTotal / 1024 / 1024),
+          percentage: Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100)
+        },
+        uptime: Math.floor(uptime),
+        nodeVersion: process.version
+      }
     };
     
-    // Log health check results
+    const responseTime = Date.now() - startTime;
+    
+    // Log health check
     logger.info('Health check completed:', {
+      requestId,
       status: overallStatus,
-      checkTime: `${totalCheckTime}ms`,
-      summary,
-      services: serviceHealths.map(h => ({ 
-        name: h.service, 
-        status: h.status, 
-        responseTime: `${h.responseTime}ms` 
-      }))
+      responseTime,
+      servicesHealthy: healthyCount,
+      servicesTotal: totalServices,
+      ip: req.ip
     });
     
-    // Set appropriate HTTP status code
-    const httpStatus = overallStatus === 'healthy' ? 200 : 
-                      overallStatus === 'degraded' ? 200 : 503; // 503 for critical
+    // Set appropriate status code
+    const statusCode = overallStatus === 'healthy' ? 200 : 
+                      overallStatus === 'degraded' ? 200 : 503;
     
-    res.status(httpStatus).json(healthResponse);
+    res.status(statusCode)
+       .setHeader('X-Response-Time', `${responseTime}ms`)
+       .setHeader('Cache-Control', 'no-cache')
+       .json(healthResponse);
     
   } catch (error: any) {
+    const responseTime = Date.now() - startTime;
+    
     logger.error('Health check error:', {
+      requestId,
       error: error.message,
+      responseTime,
       stack: error.stack
     });
     
-    res.status(503).json({
-      status: 'critical',
-      timestamp: new Date().toISOString(),
-      error: 'Health check system error',
-      details: error.message,
-      gateway: {
-        memory: process.memoryUsage(),
-        environment: process.env.NODE_ENV || 'development'
-      }
-    });
+    res.status(500)
+       .setHeader('X-Response-Time', `${responseTime}ms`)
+       .json({
+         status: 'unhealthy',
+         timestamp: new Date().toISOString(),
+         error: 'Health check failed',
+         message: error.message,
+         requestId
+       });
   }
 });
 
-/**
- * Health check for individual service
- */
-healthCheckRouter.get('/:serviceName', async (req: Request, res: Response) => {
-  const { serviceName } = req.params;
-  const serviceConfig = SERVICES.find(s => s.name === serviceName);
-  
-  if (!serviceConfig) {
-    return res.status(404).json({
-      success: false,
-      error: `Service '${serviceName}' not found`,
-      availableServices: SERVICES.map(s => s.name)
-    });
-  }
-
-  try {
-    const serviceHealth = await checkServiceHealth(serviceConfig);
-    
-    logger.info('Individual service health check:', {
-      service: serviceName,
-      status: serviceHealth.status,
-      responseTime: `${serviceHealth.responseTime}ms`
-    });
-    
-    const httpStatus = serviceHealth.status === 'healthy' ? 200 : 503;
-    
-    res.status(httpStatus).json({
-      service: serviceName,
-      ...serviceHealth,
-      gateway: {
-        timestamp: new Date().toISOString(),
-        version: process.env.npm_package_version || '1.0.0'
-      }
-    });
-    
-  } catch (error: any) {
-    logger.error('Individual service health check error:', {
-      service: serviceName,
-      error: error.message
-    });
-    
-    res.status(503).json({
-      service: serviceName,
-      status: 'error',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-/**
- * Detailed gateway metrics endpoint
- */
-healthCheckRouter.get('/metrics/detailed', async (req: Request, res: Response) => {
-  try {
-    const memoryUsage = process.memoryUsage();
-    const uptime = process.uptime();
-    
-    // CPU usage would require additional monitoring setup
-    const detailedMetrics = {
-      timestamp: new Date().toISOString(),
-      uptime: {
-        seconds: uptime,
-        formatted: formatUptime(uptime)
-      },
-      memory: {
-        ...memoryUsage,
-        formatted: {
-          rss: formatBytes(memoryUsage.rss),
-          heapTotal: formatBytes(memoryUsage.heapTotal),
-          heapUsed: formatBytes(memoryUsage.heapUsed),
-          external: formatBytes(memoryUsage.external)
-        }
-      },
-      environment: {
-        nodeVersion: process.version,
-        platform: process.platform,
-        arch: process.arch,
-        env: process.env.NODE_ENV || 'development'
-      },
-      services: SERVICES.map(s => ({
-        name: s.name,
-        url: s.url,
-        criticalService: s.criticalService || false
-      }))
-    };
-    
-    res.status(200).json(detailedMetrics);
-    
-  } catch (error: any) {
-    res.status(500).json({
-      error: 'Failed to collect detailed metrics',
-      message: error.message
-    });
-  }
-});
-
-/**
- * Simple ping endpoint for basic connectivity check
- */
-healthCheckRouter.get('/ping', (req: Request, res: Response) => {
+// Simple liveness probe
+healthCheckRouter.get('/live', (req: Request, res: Response) => {
   res.status(200).json({
-    success: true,
-    message: 'Gateway is running',
+    status: 'alive',
     timestamp: new Date().toISOString(),
     uptime: process.uptime()
   });
 });
 
-// Helper functions
-function formatUptime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.floor(seconds % 60);
+// Simple readiness probe
+healthCheckRouter.get('/ready', (req: Request, res: Response) => {
+  // Check if the gateway is ready to serve requests
+  const memUsage = process.memoryUsage();
+  const memoryPercentage = (memUsage.heapUsed / memUsage.heapTotal) * 100;
   
-  return `${hours}h ${minutes}m ${secs}s`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Bytes';
+  // Consider ready if memory usage is below 90%
+  if (memoryPercentage > 90) {
+    return res.status(503).json({
+      status: 'not ready',
+      reason: 'High memory usage',
+      memoryPercentage: Math.round(memoryPercentage)
+    });
+  }
   
-  const k = 1024;
-  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
+  res.status(200).json({
+    status: 'ready',
+    timestamp: new Date().toISOString(),
+    memoryPercentage: Math.round(memoryPercentage)
+  });
+});
 
 export default healthCheckRouter;

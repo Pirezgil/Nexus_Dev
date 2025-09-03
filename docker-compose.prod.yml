@@ -1,0 +1,269 @@
+# ERP Nexus - Production Docker Compose Configuration
+# Configuração completa com Nginx como reverse proxy único
+
+services:
+  # Database - PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_erp
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexus_strong_password}
+      POSTGRES_MULTIPLE_EXTENSIONS: uuid-ossp
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_user -d nexus_erp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cache & Message Broker - Redis
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Management Module
+  nexus-user-management:
+    build:
+      context: ./modules/user-management
+      dockerfile: Dockerfile
+    container_name: nexus-user-management
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:${POSTGRES_PASSWORD:-nexus_strong_password}@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - JWT_EXPIRES_IN=24h
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CRM Module
+  nexus-crm:
+    build:
+      context: .
+      dockerfile: ./modules/crm/Dockerfile
+    container_name: nexus-crm
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:${POSTGRES_PASSWORD:-nexus_strong_password}@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Services Module
+  nexus-services:
+    build:
+      context: .
+      dockerfile: ./modules/services/Dockerfile
+    container_name: nexus-services
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:${POSTGRES_PASSWORD:-nexus_strong_password}@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Agendamento Module
+  nexus-agendamento:
+    build:
+      context: .
+      dockerfile: ./modules/agendamento/Dockerfile
+    container_name: nexus-agendamento
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:${POSTGRES_PASSWORD:-nexus_strong_password}@postgres:5432/nexus_erp
+      - REDIS_URL=redis://redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      # WhatsApp Business API Configuration
+      - WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-your-phone-number-id-here}
+      - WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-your-access-token-here}
+      - WHATSAPP_API_VERSION=v18.0
+      - WHATSAPP_WEBHOOK_VERIFY_TOKEN=${WHATSAPP_WEBHOOK_VERIFY_TOKEN:-your-webhook-verify-token-here}
+      - WHATSAPP_APP_SECRET=${WHATSAPP_APP_SECRET:-your-app-secret-here}
+      # Redis Configuration for Message Queue
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+      nexus-services:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway - Centralized API management
+  api-gateway:
+    build:
+      context: ./modules/api-gateway
+      dockerfile: Dockerfile
+    container_name: nexus-api-gateway
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      - AGENDAMENTO_URL=http://nexus-agendamento:3000
+      - FRONTEND_URL=http://nexus-frontend:3000
+      - CORS_ORIGINS=http://localhost:5000,http://nginx,http://nexus-frontend:3000
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - LOG_LEVEL=info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    volumes:
+      - ./modules/api-gateway/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Application - Production build
+  nexus-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexus-frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_BASE_URL=http://nginx/api
+      - NEXT_PUBLIC_API_URL=http://nginx/api
+      - NEXT_PUBLIC_APP_NAME="ERP Nexus"
+      - NEXT_PUBLIC_APP_VERSION="1.0.0"
+      - NEXT_PUBLIC_COMPANY_NAME="ERP Nexus"
+      - NEXT_PUBLIC_TOKEN_KEY="erp_nexus_token"
+      - NEXT_PUBLIC_REFRESH_TOKEN_KEY="erp_nexus_refresh_token"
+      - NEXT_PUBLIC_SESSION_TIMEOUT=3600000
+    depends_on:
+      - api-gateway
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx Reverse Proxy - ÚNICO PONTO DE ENTRADA EXTERNO
+  nginx:
+    image: nginx:alpine
+    container_name: nexus-nginx
+    restart: unless-stopped
+    ports:
+      - "5000:80"  # Frontend e API através de uma única porta
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/logs:/var/log/nginx
+    depends_on:
+      nexus-frontend:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  nexus-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

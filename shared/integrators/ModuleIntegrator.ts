@@ -8,6 +8,29 @@
 
 import axios from 'axios';
 import { Logger } from '../utils/logger';
+import { HTTP_HEADERS } from '../constants/headers';
+import { TIMEOUT_CONFIG } from '../config/timeouts';
+
+/**
+ * Custom error class for batch validation failures
+ * Provides detailed information about which validation failed and why
+ */
+export class BatchValidationError extends Error {
+  constructor(
+    message: string,
+    public failedValidationKey: string,
+    public originalError: any,
+    public failedValidationType: string
+  ) {
+    super(message);
+    this.name = 'BatchValidationError';
+    
+    // Maintains proper stack trace for where our error was thrown (only available on V8)
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this, BatchValidationError);
+    }
+  }
+}
 
 export interface ValidationResult {
   exists: boolean;
@@ -27,7 +50,7 @@ export class ModuleIntegrator {
   
   // Service endpoints configuration
   private static endpoints: ModuleEndpoints = {
-    auth: process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
+    auth: process.env.USER_MANAGEMENT_URL || process.env.AUTH_SERVICE_URL || 'http://localhost:3001',
     crm: process.env.CRM_SERVICE_URL || 'http://localhost:3002', 
     services: process.env.SERVICES_SERVICE_URL || 'http://localhost:3003',
     agendamento: process.env.AGENDAMENTO_SERVICE_URL || 'http://localhost:3004'
@@ -47,10 +70,10 @@ export class ModuleIntegrator {
         `${this.endpoints.crm}/api/customers/${customerId}/validate`,
         {
           headers: {
-            'X-Company-Id': companyId,
+            [HTTP_HEADERS.COMPANY_ID]: companyId,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: TIMEOUT_CONFIG.INTERNAL_SERVICE
         }
       );
 
@@ -86,10 +109,10 @@ export class ModuleIntegrator {
         `${this.endpoints.services}/api/professionals/${professionalId}/validate`,
         {
           headers: {
-            'X-Company-Id': companyId,
+            [HTTP_HEADERS.COMPANY_ID]: companyId,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: TIMEOUT_CONFIG.INTERNAL_SERVICE
         }
       );
 
@@ -125,10 +148,10 @@ export class ModuleIntegrator {
         `${this.endpoints.services}/api/services/${serviceId}/validate`,
         {
           headers: {
-            'X-Company-Id': companyId,
+            [HTTP_HEADERS.COMPANY_ID]: companyId,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: TIMEOUT_CONFIG.INTERNAL_SERVICE
         }
       );
 
@@ -164,10 +187,10 @@ export class ModuleIntegrator {
         `${this.endpoints.auth}/api/users/${userId}/validate`,
         {
           headers: {
-            'X-Company-Id': companyId,
+            [HTTP_HEADERS.COMPANY_ID]: companyId,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: TIMEOUT_CONFIG.INTERNAL_SERVICE
         }
       );
 
@@ -204,14 +227,24 @@ export class ModuleIntegrator {
           headers: {
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: TIMEOUT_CONFIG.INTERNAL_SERVICE
         }
       );
 
-      return {
-        exists: response.data.exists,
-        data: response.data.company
-      };
+      // Handle both old and new response formats
+      if (response.data.success !== undefined) {
+        // New format from company validation endpoint
+        return {
+          exists: response.data.success,
+          data: response.data.data
+        };
+      } else {
+        // Legacy format
+        return {
+          exists: response.data.exists,
+          data: response.data.company
+        };
+      }
     } catch (error: any) {
       this.logger.error(`Failed to validate company ${companyId}:`, error.message);
       
@@ -240,10 +273,10 @@ export class ModuleIntegrator {
         `${this.endpoints.agendamento}/api/appointments/${appointmentId}/validate`,
         {
           headers: {
-            'X-Company-Id': companyId,
+            [HTTP_HEADERS.COMPANY_ID]: companyId,
             'Content-Type': 'application/json'
           },
-          timeout: 5000
+          timeout: TIMEOUT_CONFIG.INTERNAL_SERVICE
         }
       );
 
@@ -266,53 +299,118 @@ export class ModuleIntegrator {
   }
 
   /**
-   * Validate multiple references at once (batch validation)
-   * @param validations - Array of validation requests
-   * @returns Promise<{[key: string]: ValidationResult}>
+   * Execute a single validation based on type
+   * Internal method to centralize validation logic
+   * @param validation - Single validation request
+   * @returns Promise<ValidationResult>
    */
-  static async validateBatch(validations: {
+  private static async executeValidation(validation: {
     type: 'customer' | 'professional' | 'service' | 'user' | 'company' | 'appointment';
     id: string;
     companyId: string;
-    key: string; // Key to identify this validation in the result
-  }[]): Promise<{[key: string]: ValidationResult}> {
+    key: string;
+  }): Promise<ValidationResult> {
+    switch (validation.type) {
+      case 'customer':
+        return await this.validateCustomer(validation.id, validation.companyId);
+      case 'professional':
+        return await this.validateProfessional(validation.id, validation.companyId);
+      case 'service':
+        return await this.validateService(validation.id, validation.companyId);
+      case 'user':
+        return await this.validateUser(validation.id, validation.companyId);
+      case 'company':
+        return await this.validateCompany(validation.id);
+      case 'appointment':
+        return await this.validateAppointment(validation.id, validation.companyId);
+      default:
+        throw new Error(`Unknown validation type: ${validation.type}`);
+    }
+  }
+
+  /**
+   * Validate multiple references at once (batch validation)
+   * ATOMIC FAIL-FAST: If any validation fails, the entire batch fails immediately
+   * @param validations - Array of validation requests
+   * @param options - Validation options
+   * @returns Promise<{[key: string]: ValidationResult}>
+   * @throws BatchValidationError - If any validation fails
+   */
+  static async validateBatch(
+    validations: {
+      type: 'customer' | 'professional' | 'service' | 'user' | 'company' | 'appointment';
+      id: string;
+      companyId: string;
+      key: string; // Key to identify this validation in the result
+    }[],
+    options: {
+      failFast?: boolean; // Default: true - fail on first error
+      validateReferences?: boolean; // Default: true - ensure all references exist
+    } = {}
+  ): Promise<{[key: string]: ValidationResult}> {
+    const { failFast = true, validateReferences = true } = options;
+    
     this.logger.info(`Batch validation for ${validations.length} references`);
+
+    if (validations.length === 0) {
+      return {};
+    }
 
     const results: {[key: string]: ValidationResult} = {};
     
-    // Execute all validations in parallel
-    const promises = validations.map(async (validation) => {
-      let result: ValidationResult;
-      
-      switch (validation.type) {
-        case 'customer':
-          result = await this.validateCustomer(validation.id, validation.companyId);
-          break;
-        case 'professional':
-          result = await this.validateProfessional(validation.id, validation.companyId);
-          break;
-        case 'service':
-          result = await this.validateService(validation.id, validation.companyId);
-          break;
-        case 'user':
-          result = await this.validateUser(validation.id, validation.companyId);
-          break;
-        case 'company':
-          result = await this.validateCompany(validation.id);
-          break;
-        case 'appointment':
-          result = await this.validateAppointment(validation.id, validation.companyId);
-          break;
-        default:
-          result = { exists: false, error: 'Unknown validation type' };
+    // SEQUENTIAL EXECUTION WITH FAIL-FAST BEHAVIOR
+    // This ensures atomicity: either ALL validations pass, or the operation fails immediately
+    for (const validation of validations) {
+      try {
+        const result = await this.executeValidation(validation);
+        
+        // Check if validation failed (reference doesn't exist or has error)
+        // The individual validation methods return { exists: false, error: ... } on failure
+        if (validateReferences && (!result.exists || result.error)) {
+          const errorMessage = result.error || `${validation.type} with ID '${validation.id}' does not exist`;
+          
+          if (failFast) {
+            // FAIL-FAST: Throw immediately to prevent further validations
+            throw new BatchValidationError(
+              `Batch validation failed at key '${validation.key}': ${errorMessage}`,
+              validation.key,
+              result.error || new Error(`Reference not found: ${validation.type}/${validation.id}`),
+              validation.type
+            );
+          } else {
+            // Non-fail-fast mode: collect the error but continue
+            results[validation.key] = result;
+            continue;
+          }
+        }
+        
+        results[validation.key] = result;
+        
+      } catch (error: any) {
+        // Handle unexpected errors (network issues, etc.)
+        if (failFast) {
+          // FAIL-FAST: Wrap unexpected errors in BatchValidationError and throw
+          if (error instanceof BatchValidationError) {
+            throw error; // Re-throw our custom error
+          }
+          
+          throw new BatchValidationError(
+            `Batch validation failed at key '${validation.key}': ${error.message}`,
+            validation.key,
+            error,
+            validation.type
+          );
+        } else {
+          // Non-fail-fast mode: collect the error but continue
+          results[validation.key] = {
+            exists: false,
+            error: error.message || 'Validation failed'
+          };
+        }
       }
-      
-      results[validation.key] = result;
-    });
-
-    await Promise.all(promises);
+    }
     
-    this.logger.info(`Batch validation completed: ${Object.keys(results).length} results`);
+    this.logger.info(`Batch validation completed successfully: ${Object.keys(results).length} results`);
     return results;
   }
 
@@ -325,7 +423,7 @@ export class ModuleIntegrator {
     
     const promises = Object.entries(this.endpoints).map(async ([module, url]) => {
       try {
-        await axios.get(`${url}/health`, { timeout: 3000 });
+        await axios.get(`${url}/health`, { timeout: TIMEOUT_CONFIG.HEALTH_CHECK });
         results[module] = true;
       } catch (error) {
         this.logger.error(`Health check failed for ${module}:`, error);

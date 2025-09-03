@@ -14,6 +14,7 @@ import { errorHandler, notFoundHandler } from './middleware/error';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import healthRoutes from './routes/healthRoutes';
+import companyRoutes from './routes/companyRoutes';
 
 // Create Express application
 const app: Application = express();
@@ -131,6 +132,7 @@ app.use('/health', healthRoutes);
 // Validation routes temporarily disabled for infrastructure setup
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
+app.use('/api/companies', companyRoutes);
 
 // Root endpoint
 app.get('/', (req: Request, res: Response) => {

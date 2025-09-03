@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { combineDateTime, extractDateForInput, extractTimeForInput, getCurrentDateForInput, getCurrentTimeForInput } from '@/lib/dates';
 import { 
   Search, 
   Calendar, 
@@ -25,6 +26,7 @@ import {
 
 // Importar componentes e hooks
 import { Button } from '@/components/ui/button';
+import { filterAvailableProfessionals, isProfessionalAvailable } from '@/utils/professional-status';
 import { Card } from '@/components/ui/card';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
@@ -62,6 +64,7 @@ interface Professional {
   photo_url?: string;
   email?: string;
   phone?: string;
+  status: 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
 }
 
 interface AvailableSlot {
@@ -137,8 +140,8 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
     customer_id: appointment?.customer_id || '',
     professional_id: appointment?.professional_id || initialProfessionalId || '',
     service_id: appointment?.service_id || '',
-    appointment_date: appointment?.appointment_date || initialDate || searchParams?.get('date') || '',
-    appointment_time: appointment?.appointment_time || initialTime || searchParams?.get('time') || '',
+    appointment_date: appointment?.start_time ? extractDateForInput(appointment.start_time) : initialDate || searchParams?.get('date') || getCurrentDateForInput(),
+    appointment_time: appointment?.start_time ? extractTimeForInput(appointment.start_time) : initialTime || searchParams?.get('time') || getCurrentTimeForInput(),
     notes: appointment?.notes || '',
     send_confirmation: appointment?.send_confirmation ?? true,
     send_reminder: appointment?.send_reminder ?? true,
@@ -294,6 +297,12 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
     return professionals?.find(p => p.id === formData.professional_id);
   }, [professionals, formData.professional_id]);
 
+  // Professionals filtrados por disponibilidade
+  const availableProfessionals = useMemo(() => {
+    if (!professionals) return [];
+    return filterAvailableProfessionals(professionals, false); // Não permitir profissionais em férias por padrão
+  }, [professionals]);
+
   // Handlers
   const handleCustomerSelect = (customer: Customer) => {
     setSelectedCustomer(customer);
@@ -362,7 +371,16 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
     }
     
     try {
-      await createAppointmentMutation.mutateAsync(formData);
+      // Converter data e hora para ISO string antes de enviar
+      const dataToSubmit = {
+        ...formData,
+        start_time: combineDateTime(formData.appointment_date, formData.appointment_time)
+      };
+      
+      // Remover campos que não são necessários na API
+      const { appointment_date, appointment_time, ...apiData } = dataToSubmit;
+      
+      await createAppointmentMutation.mutateAsync(apiData);
     } catch (error) {
       // Error já tratado no onError da mutation
       console.error('Erro ao submeter formulário:', error);
@@ -608,9 +626,15 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
                   required
                 >
                   <option value="">Selecione um profissional</option>
-                  {professionals?.map(prof => (
+                  {availableProfessionals?.map(prof => (
                     <option key={prof.id} value={prof.id}>
                       {prof.name}
+                    </option>
+                  ))}
+                  {/* Mostrar profissionais indisponíveis com indicação */}
+                  {professionals?.filter(prof => !isProfessionalAvailable(prof.status)).map(prof => (
+                    <option key={prof.id} value={prof.id} disabled>
+                      {prof.name} (Indisponível)
                     </option>
                   ))}
                 </select>
@@ -648,7 +672,7 @@ export const AppointmentForm: React.FC<AppointmentFormProps> = ({
                 type="date"
                 value={formData.appointment_date}
                 onChange={(e) => handleFieldChange('appointment_date', e.target.value)}
-                min={new Date().toISOString().split('T')[0]}
+                min={getCurrentDateForInput()}
                 className={`w-full px-3 py-3 border rounded-lg transition-all outline-none ${
                   errors.appointment_date 
                     ? 'border-red-500 focus:ring-2 focus:ring-red-200' 

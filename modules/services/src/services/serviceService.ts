@@ -6,6 +6,7 @@ import {
   ServiceInput,
   ServiceUpdate,
   ServiceFilter,
+  ServiceWithStats,
   PaginationParams,
   ApiResponse,
   NotFoundError,
@@ -138,7 +139,7 @@ export class ServiceService {
   async getServices(
     filter: ServiceFilter,
     pagination: PaginationParams
-  ): Promise<ApiResponse<Service[]>> {
+  ): Promise<ApiResponse<ServiceWithStats[]>> {
     try {
       const where: Prisma.ServiceWhereInput = {
         companyId: filter.companyId,
@@ -192,7 +193,7 @@ export class ServiceService {
       const take = pagination.limit;
 
       // Execute queries
-      const [services, total] = await Promise.all([
+      const [services, total, totalStats] = await Promise.all([
         prisma.service.findMany({
           where,
           skip,
@@ -204,25 +205,57 @@ export class ServiceService {
             _count: {
               select: {
                 appointments: true,
+                professionalServices: true,
               },
             },
           },
         }),
         prisma.service.count({ where }),
+        // Calcular estatísticas gerais para os KPIs
+        prisma.service.aggregate({
+          where: { companyId: filter.companyId },
+          _count: { id: true },
+          _avg: { duration: true, price: true },
+          _sum: { price: true },
+        }),
       ]);
 
       const totalPages = Math.ceil(total / pagination.limit);
+
+      // Processar serviços com dados compatíveis com o frontend
+      const processedServices = services.map(service => ({
+        ...service,
+        // Compatibilidade com frontend - adicionar _count.professionals
+        _count: {
+          ...service._count,
+          professionals: service._count?.professionalServices || 0,
+        },
+        // Campo adicional para facilitar acesso direto
+        professionals_count: service._count?.professionalServices || 0,
+        // Mapear status para isActive (compatibilidade frontend)
+        isActive: service.status === 'ACTIVE',
+      }));
+
+      // Calcular KPIs/estatísticas
+      const stats = {
+        total_services: totalStats._count.id,
+        average_duration: Math.round(totalStats._avg.duration || 0),
+        average_price: Number((totalStats._avg.price || 0).toFixed(2)),
+        total_value: Number((totalStats._sum.price || 0).toFixed(2)),
+      };
 
       logger.debug('Services retrieved successfully', {
         count: services.length,
         total,
         page: pagination.page,
         companyId: filter.companyId,
+        stats,
       });
 
       return {
         success: true,
-        data: services,
+        data: processedServices,
+        stats,
         pagination: {
           page: pagination.page,
           limit: pagination.limit,

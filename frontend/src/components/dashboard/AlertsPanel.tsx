@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/utils';
+import { formatTimeAgo } from '@/lib/dates';
 import type { Alert as AlertType } from '@/hooks/api/use-dashboard';
 
 // ====================================
@@ -67,23 +68,6 @@ const getAlertConfig = (type: AlertType['type']) => {
   }
 };
 
-const formatTimeAgo = (dateString: string): string => {
-  const date = new Date(dateString);
-  const now = new Date();
-  const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
-
-  if (diffInMinutes < 1) {
-    return 'Agora mesmo';
-  } else if (diffInMinutes < 60) {
-    return `${diffInMinutes} min atrás`;
-  } else if (diffInMinutes < 1440) {
-    const hours = Math.floor(diffInMinutes / 60);
-    return `${hours} hora${hours !== 1 ? 's' : ''} atrás`;
-  } else {
-    const days = Math.floor(diffInMinutes / 1440);
-    return `${days} dia${days !== 1 ? 's' : ''} atrás`;
-  }
-};
 
 const getModuleLabel = (module: AlertType['module']): string => {
   switch (module) {

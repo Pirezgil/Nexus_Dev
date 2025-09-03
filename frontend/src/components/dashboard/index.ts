@@ -5,7 +5,7 @@
 // KPI COMPONENTS - REMOVIDO
 // ====================================
 // REFATORADO: KPICard agora deve ser importado da nova biblioteca modular
-// import { KPICard } from '@shared/components/ui';
+// import { KPICard } from '@/components/ui';
 
 // ====================================
 // CHART COMPONENTS

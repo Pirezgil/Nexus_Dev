@@ -9,16 +9,37 @@ import { useAuthStore } from '@/stores/auth';
 
 export default function HomePage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isLoading, initialize } = useAuthStore();
 
+  // Inicializar autenticação na primeira renderização
   useEffect(() => {
+    const initAuth = async () => {
+      await initialize();
+    };
+    initAuth();
+  }, [initialize]);
+
+  // Redirecionar baseado no status de autenticação com timeout de segurança
+  useEffect(() => {
+    // Timeout de segurança: se está carregando há mais de 8 segundos, forçar redirect para login
+    const timeout = setTimeout(() => {
+      if (isLoading) {
+        console.warn('⚠️ HomePage auth loading timeout, redirecting to login');
+        router.replace('/login');
+      }
+    }, 8000); // 8 segundos
+
     if (!isLoading) {
       if (isAuthenticated) {
+        console.log('✅ HomePage: User authenticated, redirecting to dashboard');
         router.replace('/dashboard');
       } else {
+        console.log('❌ HomePage: User not authenticated, redirecting to login');
         router.replace('/login');
       }
     }
+
+    return () => clearTimeout(timeout);
   }, [isAuthenticated, isLoading, router]);
 
   // Loading state

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Database - PostgreSQL
   postgres:
@@ -11,6 +9,15 @@ services:
       POSTGRES_USER: nexus_user
       POSTGRES_PASSWORD: nexus_password
       POSTGRES_MULTIPLE_EXTENSIONS: uuid-ossp
+      # 🔐 HMAC Secret para comunicação segura entre serviços
+      GATEWAY_HMAC_SECRET: "99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76"
+      # ⏱️ Política Centralizada de Timeouts
+      TIMEOUT_HEALTH_CHECK: 5000
+      TIMEOUT_QUICK_OPERATIONS: 10000
+      TIMEOUT_INTERNAL_SERVICE: 25000
+      TIMEOUT_API_CLIENT: 30000
+      TIMEOUT_GATEWAY: 60000
+      TIMEOUT_EXTERNAL_API: 60000
     ports:
       - "5433:5432"
     volumes:
@@ -57,6 +64,14 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_EXPIRES_IN=24h
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +101,14 @@ services:
       - REDIS_URL=redis://redis:6379
       - USER_MANAGEMENT_URL=http://nexus-user-management:3000
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,6 +141,14 @@ services:
       - USER_MANAGEMENT_URL=http://nexus-user-management:3000
       - CRM_URL=http://nexus-crm:3000
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
     depends_on:
       postgres:
         condition: service_healthy
@@ -163,6 +194,14 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_DB=3
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
     depends_on:
       postgres:
         condition: service_healthy
@@ -182,34 +221,37 @@ services:
       timeout: 10s
       retries: 3
 
-  # Frontend Application
+  # Frontend Application - Development with bind volumes
   nexus-frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    image: node:18-alpine
     container_name: nexus-frontend
     restart: unless-stopped
+    working_dir: /app
+    command: sh -c "apk add --no-cache curl && npm install --no-audit --no-fund && npx next dev --port 3000 --hostname 0.0.0.0"
     ports:
-      - "3000:3000"
+      - "5000:3000"
     environment:
       - NODE_ENV=development
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:5001
       - NEXT_PUBLIC_API_URL=http://localhost:5001
-      # ✅ SIMPLIFIED: Only one API URL needed - the Gateway!
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:5001
+      # ⏱️ Política Centralizada de Timeouts (Frontend)
+      - NEXT_PUBLIC_TIMEOUT_API_CLIENT=30000
+      - NEXT_PUBLIC_TIMEOUT_QUICK_OPERATIONS=10000
     depends_on:
       - api-gateway
-    networks:
-      - nexus-network
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - frontend_node_modules:/app/node_modules
+    networks:
+      - nexus-network
 
   # API Gateway (Node.js) - ÚNICO PONTO DE ENTRADA EXTERNO
   api-gateway:
     image: node:18-alpine
     container_name: nexus-api-gateway
     working_dir: /app
-    command: sh -c "npm install && npm run dev"
+    command: sh -c "npm install && npm run build && npm start"
     restart: unless-stopped
     ports:
       - "5001:5001"  # ✅ ÚNICO PORTO EXTERNO
@@ -220,10 +262,20 @@ services:
       - CRM_URL=http://nexus-crm:3000
       - SERVICES_URL=http://nexus-services:3000
       - AGENDAMENTO_URL=http://nexus-agendamento:3000
-      - FRONTEND_URL=http://localhost:3002
-      - CORS_ORIGINS=http://localhost:3002,http://localhost:3000
+      - FRONTEND_URL=http://nexus-frontend:3000
+      - CORS_ORIGINS=http://localhost:5000,http://localhost:3000,http://nexus-frontend:3000
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - LOG_LEVEL=info
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts (Gateway)
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_GATEWAY_CRM=60000
+      - TIMEOUT_GATEWAY_SERVICES=60000
+      - TIMEOUT_GATEWAY_AGENDAMENTO=60000
+      - TIMEOUT_EXTERNAL_API=60000
     depends_on:
       postgres:
         condition: service_healthy
@@ -236,6 +288,7 @@ services:
     volumes:
       - ./modules/api-gateway:/app
       - ./modules/api-gateway/logs:/app/logs
+      - ./shared:/app/shared
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:5001/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"]
       interval: 30s
@@ -246,6 +299,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  frontend_node_modules:
     driver: local
 
 networks:

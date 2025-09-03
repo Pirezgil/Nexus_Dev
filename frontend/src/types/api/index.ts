@@ -282,12 +282,12 @@ export interface Service {
   id: string;
   name: string;
   description?: string;
-  price: number;
+  price: string; // ✅ DECIMAL PRECISION: Changed from number to string
   duration: number; // in minutes
   category: string;
   categoryId?: string;
   color?: string;
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
   allowOnlineBooking: boolean;
   requiresApproval: boolean;
   maxAdvanceBookingDays?: number;
@@ -312,7 +312,7 @@ export interface ServiceCategory {
   color: string;
   icon?: string;
   sortOrder: number;
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
   servicesCount: number;
   companyId: string;
   createdAt: string;
@@ -322,10 +322,10 @@ export interface ServiceCategory {
 export interface ServiceFilters extends PaginationParams, SearchFilter {
   category?: string;
   categoryId?: string;
-  isActive?: boolean;
+  status?: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
   allowOnlineBooking?: boolean;
-  priceMin?: number;
-  priceMax?: number;
+  priceMin?: string; // ✅ DECIMAL PRECISION: Changed from number to string
+  priceMax?: string; // ✅ DECIMAL PRECISION: Changed from number to string
   durationMin?: number;
   durationMax?: number;
   tags?: string[];
@@ -342,7 +342,7 @@ export interface Professional {
   bio?: string;
   specialties: string[];
   workSchedule: ProfessionalWorkSchedule;
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
   allowOnlineBooking: boolean;
   notificationPreferences: {
     email: boolean;
@@ -389,7 +389,7 @@ export interface DaySchedule {
 }
 
 export interface ProfessionalFilters extends PaginationParams, SearchFilter {
-  isActive?: boolean;
+  status?: 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
   allowOnlineBooking?: boolean;
   specialty?: string;
   hasServices?: boolean;
@@ -492,7 +492,7 @@ export interface CompletedAppointment {
   service: {
     id: string;
     name: string;
-    price: number;
+    price: string; // ✅ DECIMAL PRECISION: Changed from number to string
     category: string;
     duration: number;
   };
@@ -503,7 +503,7 @@ export interface CompletedAppointment {
   internalNotes?: string;
   paymentStatus: 'PENDING' | 'PAID' | 'PARTIAL' | 'CANCELLED' | 'REFUNDED';
   paymentMethod?: 'CASH' | 'CREDIT_CARD' | 'DEBIT_CARD' | 'PIX' | 'BANK_TRANSFER' | 'OTHER';
-  totalAmount: number;
+  totalAmount: string; // ✅ DECIMAL PRECISION: Changed from number to string
   discountAmount?: number;
   discountReason?: string;
   photos: ServicePhoto[];
@@ -530,8 +530,8 @@ export interface CompletedAppointmentFilters extends PaginationParams, DateRange
   hasRating?: boolean;
   ratingMin?: number;
   followUpNeeded?: boolean;
-  totalAmountMin?: number;
-  totalAmountMax?: number;
+  totalAmountMin?: string; // ✅ DECIMAL PRECISION: Changed from number to string
+  totalAmountMax?: string; // ✅ DECIMAL PRECISION: Changed from number to string
 }
 
 export interface ServicePhoto {
@@ -574,7 +574,7 @@ export interface Appointment {
     id: string;
     name: string;
     duration: number;
-    price: number;
+    price: string; // ✅ DECIMAL PRECISION: Changed from number to string
     category: string;
     color?: string;
   };
@@ -587,9 +587,9 @@ export interface Appointment {
   reminderSent: boolean;
   confirmationSent: boolean;
   whatsappSent: boolean;
-  price?: number; // Override service price if needed
+  price?: string; // ✅ DECIMAL PRECISION: Override service price if needed
   deposit?: {
-    amount: number;
+    amount: string; // ✅ DECIMAL PRECISION: Changed from number to string
     status: 'PENDING' | 'PAID' | 'CANCELLED';
     paidAt?: string;
     method?: string;
@@ -706,7 +706,7 @@ export interface NotificationTemplate {
   subject?: string; // For email
   message: string;
   variables: string[]; // Available template variables
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE';
   isSystem: boolean;
   companyId: string;
   createdAt: string;
@@ -808,7 +808,7 @@ export interface WaitingListItem {
     id: string;
     name: string;
     duration: number;
-    price: number;
+    price: string; // ✅ DECIMAL PRECISION: Changed from number to string
     category: string;
   };
   professionalId?: string;
@@ -930,13 +930,13 @@ export interface FinancialReport {
     end: string;
   };
   summary: {
-    totalRevenue: number;
+    totalRevenue: string; // ✅ DECIMAL PRECISION: Changed from number to string
     totalAppointments: number;
     averageTicket: number;
     growth: number;
   };
   byPaymentMethod: Record<string, {
-    amount: number;
+    amount: string; // ✅ DECIMAL PRECISION: Changed from number to string
     count: number;
     percentage: number;
   }>;
@@ -962,7 +962,7 @@ export interface FinancialReport {
     avgTicket: number;
   }>;
   pending: {
-    amount: number;
+    amount: string; // ✅ DECIMAL PRECISION: Changed from number to string
     count: number;
     overdue: number;
   };

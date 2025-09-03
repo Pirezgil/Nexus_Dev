@@ -10,6 +10,7 @@ export const useUIStore = create<UIStore>()(
     (set, get) => ({
       // Estado inicial
       sidebarOpen: true,
+      sidebarCollapsed: false,
       theme: 'light',
       toasts: [],
 
@@ -20,6 +21,14 @@ export const useUIStore = create<UIStore>()(
 
       toggleSidebar: () => {
         set((state) => ({ sidebarOpen: !state.sidebarOpen }));
+      },
+
+      setSidebarCollapsed: (collapsed: boolean) => {
+        set({ sidebarCollapsed: collapsed });
+      },
+
+      toggleSidebarCollapsed: () => {
+        set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed }));
       },
 
       // Theme functions
@@ -65,6 +74,7 @@ export const useUIStore = create<UIStore>()(
       name: 'erp-nexus-ui',
       partialize: (state) => ({
         sidebarOpen: state.sidebarOpen,
+        sidebarCollapsed: state.sidebarCollapsed,
         theme: state.theme,
       }),
     }

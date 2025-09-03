@@ -12,11 +12,16 @@ import {
   User, 
   LogOut, 
   ChevronDown,
-  Settings
+  Settings,
+  PanelLeftClose,
+  PanelLeftOpen
 } from 'lucide-react';
 
 // REFATORADO: Importar da nova biblioteca de componentes modular
-import { Sidebar, Button, Input, LoadingSpinner } from '@shared/components/ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { Sidebar } from '@/components/ui';
 import { useAuthStore, useCurrentUser, usePermissions } from '@/stores/auth';
 import { useUIStore, useToast } from '@/stores/ui';
 import { cn } from '@/utils';
@@ -37,16 +42,27 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const router = useRouter();
   const { isAuthenticated, isLoading, logout } = useAuthStore();
   const { user, displayName, company } = useCurrentUser();
-  const { sidebarOpen, setSidebarOpen } = useUIStore();
+  const { sidebarOpen, setSidebarOpen, sidebarCollapsed, setSidebarCollapsed } = useUIStore();
   const { success, error } = useToast();
   const [userMenuOpen, setUserMenuOpen] = React.useState(false);
   const permissions = usePermissions();
 
-  // Redirect to login if not authenticated
+  // Redirect to login if not authenticated with timeout safety
   React.useEffect(() => {
+    // Timeout de segurança: se está carregando há mais de 10 segundos, forçar redirect
+    const timeout = setTimeout(() => {
+      if (isLoading) {
+        console.warn('⚠️ Auth loading timeout reached, forcing redirect to login');
+        router.push('/login');
+      }
+    }, 10000); // 10 segundos
+
     if (!isLoading && !isAuthenticated) {
+      console.log('🔄 DashboardLayout: Redirecting to login - not authenticated');
       router.push('/login');
     }
+
+    return () => clearTimeout(timeout);
   }, [isAuthenticated, isLoading, router]);
 
   // Handle logout
@@ -77,14 +93,29 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   // REFATORADO: Usar configuração centralizada do sidebar
   const sidebarItems = filterSidebarItemsByPermissions(SIDEBAR_ITEMS, permissions);
 
-  // Show loading or redirect
+  // Show loading or redirect with timeout protection
   if (isLoading) {
     return (
       <div 
         className="min-h-screen flex items-center justify-center"
         style={{ backgroundColor: '#F8FAFC' }}
       >
-        <LoadingSpinner size="lg" />
+        <div className="text-center space-y-4">
+          <LoadingSpinner size="lg" />
+          <p className="text-slate-600 text-sm">
+            Carregando sistema...
+          </p>
+          <button
+            onClick={() => {
+              console.log('🔄 User clicked retry, forcing logout and redirect');
+              logout();
+              router.push('/login');
+            }}
+            className="mt-4 text-xs text-slate-500 hover:text-slate-700 underline"
+          >
+            Clique aqui se a tela não carregar em alguns segundos
+          </button>
+        </div>
       </div>
     );
   }
@@ -99,14 +130,17 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       style={{ backgroundColor: '#F8FAFC' }} // CORRIGIDO: bgLight
     >
       {/* CORRIGIDO: Sidebar seguindo padrão do Dashboard */}
-      <Sidebar 
-        isOpen={sidebarOpen} 
-        onToggle={() => setSidebarOpen(!sidebarOpen)}
-        items={sidebarItems}
-      />
+      <Sidebar />
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col">
+      <div 
+        className={cn(
+          `flex-1 flex flex-col transition-all duration-300`,
+          // No mobile, sem margin (sidebar sobrepõe)
+          'lg:ml-64', // Desktop: margin left padrão
+          sidebarCollapsed && 'lg:ml-16' // Desktop: margin left reduzido quando collapsed
+        )}
+      >
         {/* CORRIGIDO: Header seguindo padrão do Dashboard */}
         <header 
           className="bg-white border-b px-6 py-4"
@@ -115,20 +149,32 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           }}
         >
           <div className="flex items-center justify-between">
-            <div>
-              {title && (
-                <h1 
-                  className="text-2xl font-semibold"
-                  style={{ color: '#020617' }} // CORRIGIDO: textPrimary
-                >
-                  {title}
-                </h1>
-              )}
-              {subtitle && (
-                <p style={{ color: '#64748B' }}> {/* CORRIGIDO: textSecondary */}
-                  {subtitle}
-                </p>
-              )}
+            <div className="flex items-center space-x-4">
+              {/* Mobile menu button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="lg:hidden"
+                onClick={() => setSidebarOpen(true)}
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+              
+              <div>
+                {title && (
+                  <h1 
+                    className="text-2xl font-semibold"
+                    style={{ color: '#020617' }} // CORRIGIDO: textPrimary
+                  >
+                    {title}
+                  </h1>
+                )}
+                {subtitle && (
+                  <p style={{ color: '#64748B' }}> {/* CORRIGIDO: textSecondary */}
+                    {subtitle}
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* User Dropdown */}

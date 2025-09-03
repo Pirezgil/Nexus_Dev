@@ -39,6 +39,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from '@/lib/toast';
+import { formatDate } from '@/lib/dates';
 
 // Types
 interface User {
@@ -288,7 +289,7 @@ export const UsersManagement: React.FC = () => {
                     <TableCell>
                       {user.last_login ? (
                         <span className="text-sm">
-                          {new Date(user.last_login).toLocaleDateString()}
+                          {formatDate(user.last_login)}
                         </span>
                       ) : (
                         <span className="text-sm text-gray-500">Nunca</span>

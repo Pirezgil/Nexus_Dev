@@ -30,7 +30,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
   const requestId = req.requestId || 'unknown';
   const startTime = Date.now();
   
-  logger.info('🚨 DEBUG: authMiddleware iniciado', {
+  logger.debug('authMiddleware iniciado', {
     requestId,
     path: req.path,
     method: req.method,
@@ -63,8 +63,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
         requestId,
         path: req.path,
         method: req.method,
-        ip: req.ip,
-        authHeader: authHeader.substring(0, 20) + '...'
+        ip: req.ip
       });
       
       res.status(401).json({
@@ -92,13 +91,12 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
     const userManagementUrl = process.env.USER_MANAGEMENT_URL || 'http://nexus-user-management:3000';
     const validationUrl = `${userManagementUrl}/auth/validate`;
     
-    logger.info('🚨 DEBUG: Validating token with User Management service:', {
+    logger.debug('Validating token with User Management service', {
       requestId,
-      validationUrl,
-      tokenLength: token.length
+      validationUrl
     });
 
-    const response = await fetch(validationUrl, {
+    const fetchOptions: RequestInit = {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -106,8 +104,10 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
         'X-Gateway-Source': 'nexus-api-gateway',
         'X-Forwarded-For': req.ip || 'unknown',
         'X-Original-Host': req.get('Host') || 'unknown'
-      } as Record<string, string>
-    });
+      }
+    };
+
+    const response = await fetch(validationUrl, fetchOptions as any);
 
     const authTime = Date.now() - startTime;
     
@@ -118,7 +118,6 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
         requestId,
         status: response.status,
         statusText: response.statusText,
-        error: errorData.error,
         code: errorData.code,
         authTime,
         ip: req.ip
@@ -169,8 +168,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
       logger.error('Incomplete user data from auth service:', {
         requestId,
         hasUserId: !!user.userId,
-        hasCompanyId: !!user.companyId,
-        userData: { ...user, userId: user.userId ? '[PRESENT]' : '[MISSING]' }
+        hasCompanyId: !!user.companyId
       });
       
       res.status(503).json({
@@ -191,7 +189,7 @@ export const authMiddleware = async (req: AuthRequest, res: Response, next: Next
       name: user.name
     };
 
-    logger.info('Authentication successful:', {
+    logger.debug('Authentication successful:', {
       requestId,
       userId: user.userId,
       companyId: user.companyId,

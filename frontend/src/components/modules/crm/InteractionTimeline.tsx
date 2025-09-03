@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { formatDateTime, formatTimeAgo, formatTime } from '@/lib/dates';
 
 interface InteractionTimelineProps {
   interactions: CustomerInteraction[];
@@ -66,26 +67,16 @@ export const InteractionTimeline: React.FC<InteractionTimelineProps> = ({
     return labels[type as keyof typeof labels] || type;
   };
 
-  const formatDateTime = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInHours = Math.abs(now.getTime() - date.getTime()) / (1000 * 60 * 60);
+  const formatRelativeTime = (dateString: string) => {
+    const diffInHours = Math.abs(Date.now() - new Date(dateString).getTime()) / (1000 * 60 * 60);
     
     if (diffInHours < 24) {
-      return date.toLocaleTimeString('pt-BR', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
-      });
+      return formatTime(dateString);
     } else if (diffInHours < 24 * 7) {
-      const diffInDays = Math.floor(diffInHours / 24);
-      return `${diffInDays} dia${diffInDays > 1 ? 's' : ''} atrás`;
+      return formatTimeAgo(dateString);
     } else {
-      return date.toLocaleDateString('pt-BR');
+      return formatDateTime(dateString);
     }
-  };
-
-  const formatFullDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('pt-BR');
   };
 
   if (loading) {
@@ -167,9 +158,9 @@ export const InteractionTimeline: React.FC<InteractionTimelineProps> = ({
                         por {interaction.user.name}
                       </span>
                     </div>
-                    <div className="text-sm text-gray-500" title={formatFullDateTime(interaction.date)}>
+                    <div className="text-sm text-gray-500" title={formatDateTime(interaction.date)}>
                       <Calendar size={14} className="inline mr-1" />
-                      {formatDateTime(interaction.date)}
+                      {formatRelativeTime(interaction.date)}
                     </div>
                   </div>
                   

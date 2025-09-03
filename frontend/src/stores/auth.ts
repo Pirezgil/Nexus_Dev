@@ -16,6 +16,7 @@ export const useAuthStore = create<AuthStore>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
+      status: 'idle',
 
       // Login function
       login: async (credentials: LoginRequest) => {
@@ -56,6 +57,7 @@ export const useAuthStore = create<AuthStore>()(
               refreshToken,
               isAuthenticated: true,
               isLoading: false,
+              status: 'authenticated',
             });
             
             console.log('✅ Login successful:', userData.firstName || userData.name || userData.email);
@@ -63,7 +65,7 @@ export const useAuthStore = create<AuthStore>()(
             throw new Error(response.error || 'Falha no login');
           }
         } catch (error: any) {
-          set({ isLoading: false });
+          set({ isLoading: false, status: 'unauthenticated' });
           console.error('❌ Login error:', error);
           
           // Melhor tratamento de erros
@@ -97,6 +99,7 @@ export const useAuthStore = create<AuthStore>()(
             refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
+            status: 'unauthenticated',
           });
           
           console.log('✅ Logout successful');
@@ -144,51 +147,117 @@ export const useAuthStore = create<AuthStore>()(
       initialize: async () => {
         if (typeof window === 'undefined') return;
         
+        set({ status: 'loading', isLoading: true });
         console.log('🔄 Initializing auth store...');
 
-        const token = localStorage.getItem('erp_nexus_token');
-        const refreshToken = localStorage.getItem('erp_nexus_refresh_token');
-        const persistedData = localStorage.getItem('erp-nexus-auth');
-        
-        console.log('🔍 Storage data:', { 
-          hasToken: !!token, 
-          hasRefresh: !!refreshToken, 
-          hasPersisted: !!persistedData,
-          persistedData: persistedData ? JSON.parse(persistedData) : null
-        });
-        
-        if (token && refreshToken) {
-          // O Zustand persist middleware já carregou os dados salvos
-          // Verificar se os tokens ainda são válidos
+        try {
+          const token = localStorage.getItem('erp_nexus_token');
+          const refreshToken = localStorage.getItem('erp_nexus_refresh_token');
+          const persistedData = localStorage.getItem('erp-nexus-auth');
+          
+          console.log('🔍 Storage data:', { 
+            hasToken: !!token, 
+            hasRefresh: !!refreshToken, 
+            hasPersisted: !!persistedData,
+            persistedData: persistedData ? JSON.parse(persistedData) : null
+          });
+          
+          // Se não há tokens, definir como não autenticado imediatamente
+          if (!token || !refreshToken) {
+            console.log('❌ No tokens found, setting as unauthenticated');
+            set({
+              user: null,
+              company: null,
+              token: null,
+              refreshToken: null,
+              isAuthenticated: false,
+              isLoading: false,
+              status: 'unauthenticated',
+            });
+            return;
+          }
+
+          // Verificar se os dados do usuário estão disponíveis no Zustand persist
           const currentState = get();
-          const { user, company, isAuthenticated } = currentState;
+          const { user, company } = currentState;
           
           console.log('🔍 Current store state:', { 
             hasUser: !!user, 
             hasCompany: !!company, 
             userEmail: user?.email,
-            isAuthenticated,
             fullUser: user
           });
           
-          if (user && company) {
-            // Se os dados do usuário E company estão disponíveis, assumir autenticado
+          // Se temos tokens mas não temos dados do usuário ou company, validar tokens
+          if (!user || !company) {
+            console.log('⚠️ Missing user/company data, validating tokens...');
+            
+            try {
+              // Tentar validar token com timeout curto
+              const response = await Promise.race([
+                authApi.validate(),
+                new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error('Token validation timeout')), 3000)
+                )
+              ]);
+              
+              if (response.success && response.data) {
+                // Token válido mas dados não estão no store - limpar e forçar re-login
+                console.log('✅ Token valid but user data missing - forcing re-login');
+                localStorage.removeItem('erp_nexus_token');
+                localStorage.removeItem('erp_nexus_refresh_token');
+                set({
+                  user: null,
+                  company: null,
+                  token: null,
+                  refreshToken: null,
+                  isAuthenticated: false,
+                  isLoading: false,
+                  status: 'unauthenticated',
+                });
+                return;
+              }
+            } catch (error) {
+              console.error('❌ Token validation failed:', error);
+              // Token inválido ou erro na validação
+              localStorage.removeItem('erp_nexus_token');
+              localStorage.removeItem('erp_nexus_refresh_token');
+              set({
+                user: null,
+                company: null,
+                token: null,
+                refreshToken: null,
+                isAuthenticated: false,
+                isLoading: false,
+                status: 'unauthenticated',
+              });
+              return;
+            }
+          }
+          
+          // Se temos tokens E dados do usuário/company, assumir autenticado
+          if (user && company && token && refreshToken) {
+            console.log('✅ Session restored with user and company data');
             set({
+              user,
+              company,
+              token,
+              refreshToken,
               isAuthenticated: true,
               isLoading: false,
+              status: 'authenticated',
             });
-            console.log('✅ Session restored with user and company data');
             
-            // Validar token em background (não bloquear UI)
+            // Validar token em background sem bloquear UI
             setTimeout(async () => {
               try {
                 const response = await authApi.validate();
                 if (!response.success) {
                   throw new Error('Token validation failed');
                 }
-                console.log('✅ Token validated successfully');
+                console.log('✅ Background token validation successful');
               } catch (error) {
-                console.warn('⚠️ Token validation failed, attempting refresh...');
+                console.warn('⚠️ Background token validation failed, attempting refresh...');
                 try {
                   await get().refreshAuth();
                   console.log('✅ Token refreshed successfully');
@@ -197,24 +266,14 @@ export const useAuthStore = create<AuthStore>()(
                   await get().logout();
                 }
               }
-            }, 100); // Pequeno delay para não bloquear a UI
-          } else {
-            console.log('❌ Missing user/company data, clearing session');
-            // Missing user data, clear invalid session
-            localStorage.removeItem('erp_nexus_token');
-            localStorage.removeItem('erp_nexus_refresh_token');
-            set({
-              user: null,
-              company: null,
-              token: null,
-              refreshToken: null,
-              isAuthenticated: false,
-              isLoading: false,
-            });
+            }, 1000); // 1 segundo de delay para não bloquear a UI
+            return;
           }
-        } else {
-          console.log('❌ No tokens found, clearing state');
-          // Limpar estado se não há tokens
+          
+          // Fallback: limpar estado se chegamos aqui
+          console.log('❌ Fallback: clearing session state');
+          localStorage.removeItem('erp_nexus_token');
+          localStorage.removeItem('erp_nexus_refresh_token');
           set({
             user: null,
             company: null,
@@ -222,6 +281,22 @@ export const useAuthStore = create<AuthStore>()(
             refreshToken: null,
             isAuthenticated: false,
             isLoading: false,
+            status: 'unauthenticated',
+          });
+          
+        } catch (error) {
+          console.error('❌ Initialize error:', error);
+          // Em caso de erro, limpar tudo e definir como não autenticado
+          localStorage.removeItem('erp_nexus_token');
+          localStorage.removeItem('erp_nexus_refresh_token');
+          set({
+            user: null,
+            company: null,
+            token: null,
+            refreshToken: null,
+            isAuthenticated: false,
+            isLoading: false,
+            status: 'unauthenticated',
           });
         }
       },
@@ -251,6 +326,7 @@ export const useAuthStore = create<AuthStore>()(
         token: state.token,
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
+        status: state.status,
       }),
     }
   )

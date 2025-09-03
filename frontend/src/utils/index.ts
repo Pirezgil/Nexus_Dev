@@ -71,22 +71,53 @@ export const toISODate = (dateString: string): string => {
 // ====================================
 
 /**
- * Formatar valor monetário em Real
+ * Formatar valor monetário em Real (aceita string ou number)
+ * IMPORTANTE: Preserva precisão decimal usando string como fonte
  */
-export const formatCurrency = (value: number): string => {
+export const formatCurrency = (value: string | number): string => {
+  const numericValue = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(numericValue)) return 'R$ 0,00';
+  
   return new Intl.NumberFormat('pt-BR', {
     style: 'currency',
     currency: 'BRL',
-  }).format(value);
+  }).format(numericValue);
 };
 
 /**
- * Parser valor monetário (remove formatação)
+ * Parser valor monetário (remove formatação e retorna string)
+ * IMPORTANTE: Retorna string para preservar precisão decimal
  */
-export const parseCurrency = (value: string): number => {
+export const parseCurrency = (value: string): string => {
   const cleaned = value.replace(/[^\d,]/g, '').replace(',', '.');
   const parsed = parseFloat(cleaned);
-  return isNaN(parsed) ? 0 : parsed;
+  if (isNaN(parsed)) return '0.00';
+  return parsed.toFixed(2);
+};
+
+/**
+ * Validar se valor é um decimal válido
+ */
+export const isValidDecimal = (value: string): boolean => {
+  const regex = /^\d+(\.\d{1,2})?$/;
+  return regex.test(value) && !isNaN(parseFloat(value));
+};
+
+/**
+ * Formatar valor para input (converte decimal string para formato brasileiro)
+ */
+export const formatDecimalInput = (value: string): string => {
+  return value.replace('.', ',');
+};
+
+/**
+ * Converter input brasileiro para decimal (vírgula para ponto)
+ */
+export const parseDecimalInput = (value: string): string => {
+  const cleaned = value.replace(/[^\d,]/g, '').replace(',', '.');
+  const parsed = parseFloat(cleaned);
+  if (isNaN(parsed)) return '0.00';
+  return parsed.toFixed(2);
 };
 
 // ====================================
@@ -423,6 +454,9 @@ export default {
   toISODate,
   formatCurrency,
   parseCurrency,
+  isValidDecimal,
+  formatDecimalInput,
+  parseDecimalInput,
   capitalize,
   truncate,
   removeAccents,

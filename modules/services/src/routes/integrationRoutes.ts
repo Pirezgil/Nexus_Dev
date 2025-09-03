@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { integrationController } from '../controllers/integrationController';
-import { authenticate, authorize, requireCompanyAccess, authenticateServiceAccount } from '../middleware/auth';
+import { authenticate, authorize, requireCompanyAccess } from '../middleware/authCompat';
+import { authenticateServiceAccount } from '../middleware/auth';
 import { customRateLimit } from '../middleware/validation';
 
 const router = Router();

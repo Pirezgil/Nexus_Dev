@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { api } from '@/lib/api';
 import { queryKeys, optimisticUpdates, invalidateQueries, cachePresets } from '@/lib/query-client';
+import { extractDateForInput } from '@/lib/dates';
 
 // ====================================
 // TYPES & INTERFACES
@@ -105,7 +106,7 @@ export interface NotificationTemplate {
   channel: 'WHATSAPP' | 'SMS' | 'EMAIL';
   message: string;
   variables: string[]; // Available variables for template
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE';
   companyId: string;
 }
 
@@ -729,7 +730,7 @@ export const useCreateAppointment = () => {
       invalidateQueries.availability(data.professionalId);
       
       // Invalidate calendar for the appointment date
-      const appointmentDate = new Date(data.startTime).toISOString().split('T')[0];
+      const appointmentDate = extractDateForInput(data.startTime);
       invalidateQueries.date(appointmentDate);
     },
   });
@@ -760,7 +761,7 @@ export const useUpdateAppointment = () => {
       invalidateQueries.appointment(variables.id, {
         professionalId: data.professionalId,
         customerId: data.customerId,
-        date: new Date(data.startTime).toISOString().split('T')[0],
+        date: extractDateForInput(data.startTime),
       });
     },
     onError: (error, variables, context) => {

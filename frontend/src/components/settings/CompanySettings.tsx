@@ -16,6 +16,7 @@ import { Separator } from '@/components/ui/separator';
 import { Building2, MapPin, Phone, Mail, FileText, Settings2, Package } from 'lucide-react';
 import { useCurrentUser } from '@/stores/auth';
 import { toast } from '@/lib/toast';
+import { formatDate } from '@/lib/dates';
 
 const companySchema = z.object({
   name: z.string().min(2, 'Nome deve ter pelo menos 2 caracteres'),

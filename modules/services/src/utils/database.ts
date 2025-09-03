@@ -35,7 +35,7 @@ if (config.nodeEnv === 'development') {
 setupPrismaValidation(prisma);
 
 // Connection event handlers
-prisma.$on('error', (e) => {
+prisma.$on('error', (e: any) => {
   logger.error('Prisma error event', {
     message: e.message,
     target: e.target,
@@ -44,7 +44,7 @@ prisma.$on('error', (e) => {
 });
 
 if (config.nodeEnv === 'development') {
-  prisma.$on('query', (e) => {
+  prisma.$on('query', (e: any) => {
     logger.debug('Prisma query', {
       query: e.query,
       params: e.params,
@@ -53,7 +53,7 @@ if (config.nodeEnv === 'development') {
     });
   });
 
-  prisma.$on('warn', (e) => {
+  prisma.$on('warn', (e: any) => {
     logger.warn('Prisma warning', {
       message: e.message,
       target: e.target,
@@ -122,7 +122,7 @@ export const disconnectDatabase = async (): Promise<void> => {
 
 // Transaction helper function
 export const withTransaction = async <T>(
-  operation: (tx: PrismaClient) => Promise<T>
+  operation: (tx: any) => Promise<T>
 ): Promise<T> => {
   return await prisma.$transaction(async (tx) => {
     try {

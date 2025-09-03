@@ -15,13 +15,14 @@ export interface Service {
   id: string;
   name: string;
   description?: string;
-  price: number;
+  price: string; // ✅ DECIMAL PRECISION: Changed from number to string
   duration: number; // em minutos
   category: string;
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
   companyId: string;
   createdAt: string;
   updatedAt: string;
+  professionals_count?: number; // Compatibilidade adicional
   _count?: {
     appointments: number;
     professionals: number;
@@ -52,7 +53,7 @@ export interface Professional {
     saturday: { start: string; end: string; active: boolean };
     sunday: { start: string; end: string; active: boolean };
   };
-  isActive: boolean;
+  status: 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
   companyId: string;
   userId?: string;
   createdAt: string;
@@ -81,7 +82,7 @@ export interface CompletedAppointment {
   service: {
     id: string;
     name: string;
-    price: number;
+    price: string; // ✅ DECIMAL PRECISION: Changed from number to string
     category: string;
   };
   startTime: string;
@@ -144,7 +145,7 @@ export interface ProfessionalStatistics {
 export interface ServiceFilters {
   search?: string;
   category?: string;
-  isActive?: boolean;
+  status?: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
   priceMin?: number;
   priceMax?: number;
   durationMin?: number;
@@ -157,7 +158,7 @@ export interface ServiceFilters {
 
 export interface ProfessionalFilters {
   search?: string;
-  isActive?: boolean;
+  status?: 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
   specialty?: string;
   hasServices?: boolean;
   page?: number;
@@ -186,6 +187,12 @@ export interface PaginatedResponse<T> {
   page: number;
   limit: number;
   totalPages: number;
+  stats?: {
+    total_services: number;
+    average_duration: number;
+    average_price: number;
+    total_value: number;
+  };
 }
 
 // ====================================
@@ -201,7 +208,7 @@ const servicesApi = {
     
     if (filters.search) params.append('search', filters.search);
     if (filters.category) params.append('category', filters.category);
-    if (filters.isActive !== undefined) params.append('isActive', filters.isActive.toString());
+    if (filters.status) params.append('status', filters.status);
     if (filters.priceMin) params.append('priceMin', filters.priceMin.toString());
     if (filters.priceMax) params.append('priceMax', filters.priceMax.toString());
     if (filters.durationMin) params.append('durationMin', filters.durationMin.toString());
@@ -212,6 +219,20 @@ const servicesApi = {
     if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
     const response = await api.get(`/api/services?${params.toString()}`);
+    
+    // Mapear resposta da API para o formato esperado pelo frontend
+    if (response.data.success && response.data.data) {
+      return {
+        data: response.data.data,
+        total: response.data.pagination?.total || 0,
+        page: response.data.pagination?.page || 1,
+        limit: response.data.pagination?.limit || 20,
+        totalPages: response.data.pagination?.totalPages || 1,
+        stats: response.data.stats
+      };
+    }
+    
+    // Fallback para formato antigo
     return response.data.data || response.data;
   },
 
@@ -287,7 +308,7 @@ const servicesApi = {
       const params = new URLSearchParams();
       
       if (filters.search) params.append('search', filters.search);
-      if (filters.isActive !== undefined) params.append('isActive', filters.isActive.toString());
+      if (filters.status) params.append('status', filters.status);
       if (filters.specialty) params.append('specialty', filters.specialty);
       if (filters.hasServices !== undefined) params.append('hasServices', filters.hasServices.toString());
       if (filters.page) params.append('page', filters.page.toString());
@@ -295,36 +316,36 @@ const servicesApi = {
       if (filters.sortBy) params.append('sortBy', filters.sortBy);
       if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
-      const response = await api.get(`/api/services/professionals?${params.toString()}`);
+      const response = await api.get(`/api/professionals?${params.toString()}`);
       return response.data.data || response.data;
     },
 
     // Get professional by ID
     getById: async (id: string): Promise<Professional> => {
-      const response = await api.get(`/api/services/professionals/${id}`);
+      const response = await api.get(`/api/professionals/${id}`);
       return response.data.data || response.data;
     },
 
     // Create new professional
     create: async (data: Omit<Professional, 'id' | 'createdAt' | 'updatedAt' | 'companyId'>): Promise<Professional> => {
-      const response = await api.post('/api/services/professionals', data);
+      const response = await api.post('/api/professionals', data);
       return response.data.data || response.data;
     },
 
     // Update professional
     update: async ({ id, data }: { id: string; data: Partial<Professional> }): Promise<Professional> => {
-      const response = await api.put(`/api/services/professionals/${id}`, data);
+      const response = await api.put(`/api/professionals/${id}`, data);
       return response.data.data || response.data;
     },
 
     // Delete professional
     delete: async (id: string): Promise<void> => {
-      await api.delete(`/api/services/professionals/${id}`);
+      await api.delete(`/api/professionals/${id}`);
     },
 
     // Get active professionals (lightweight)
     getActive: async (): Promise<Pick<Professional, 'id' | 'name' | 'specialties'>[]> => {
-      const response = await api.get('/api/services/professionals/list');
+      const response = await api.get('/api/professionals/list');
       return response.data.data || response.data;
     },
 
@@ -334,7 +355,7 @@ const servicesApi = {
       params.append('date', date);
       if (serviceId) params.append('serviceId', serviceId);
       
-      const response = await api.get(`/api/services/professionals/${id}/availability?${params.toString()}`);
+      const response = await api.get(`/api/professionals/${id}/availability?${params.toString()}`);
       return response.data.data || response.data;
     },
 
@@ -346,7 +367,7 @@ const servicesApi = {
       id: string; 
       schedule: Professional['workSchedule'] 
     }): Promise<Professional> => {
-      const response = await api.put(`/api/services/professionals/${id}/schedule`, { workSchedule: schedule });
+      const response = await api.put(`/api/professionals/${id}/schedule`, { workSchedule: schedule });
       return response.data.data || response.data;
     },
 
@@ -355,7 +376,7 @@ const servicesApi = {
       const params = new URLSearchParams();
       if (period) params.append('period', period);
       
-      const response = await api.get(`/api/services/professionals/${id}/statistics?${params.toString()}`);
+      const response = await api.get(`/api/professionals/${id}/statistics?${params.toString()}`);
       return response.data.data || response.data;
     },
   },
@@ -365,7 +386,7 @@ const servicesApi = {
   professionalServices: {
     // Get services for professional
     list: async (professionalId: string): Promise<Service[]> => {
-      const response = await api.get(`/api/services/professionals/${professionalId}/services`);
+      const response = await api.get(`/api/professionals/${professionalId}/services`);
       return response.data.data || response.data;
     },
     
@@ -377,7 +398,7 @@ const servicesApi = {
       professionalId: string; 
       serviceIds: string[] 
     }): Promise<void> => {
-      await api.post(`/api/services/professionals/${professionalId}/services`, { serviceIds });
+      await api.post(`/api/professionals/${professionalId}/services`, { serviceIds });
     },
     
     // Remove service from professional
@@ -388,7 +409,7 @@ const servicesApi = {
       professionalId: string; 
       serviceId: string 
     }): Promise<void> => {
-      await api.delete(`/api/services/professionals/${professionalId}/services/${serviceId}`);
+      await api.delete(`/api/professionals/${professionalId}/services/${serviceId}`);
     },
   },
 

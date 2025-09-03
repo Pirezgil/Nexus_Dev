@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { format, isToday, isTomorrow, isPast, addMinutes, differenceInMinutes } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { formatDate, formatTimeAgo, formatDateTime, getCurrentDateForInput } from '@/lib/dates';
 
 interface Notification {
   id: string;
@@ -58,7 +59,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
     
     try {
       // Carregar agendamentos de hoje e amanhã
-      const today = format(new Date(), 'yyyy-MM-dd');
+      const today = getCurrentDateForInput();
       const tomorrow = format(addMinutes(new Date(), 24 * 60), 'yyyy-MM-dd');
 
       const [todayRes, tomorrowRes] = await Promise.all([
@@ -223,13 +224,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({ classNam
   };
 
   const formatRelativeTime = (date: Date) => {
-    const now = new Date();
-    const diffInMinutes = differenceInMinutes(now, date);
-    
-    if (diffInMinutes < 1) return 'Agora';
-    if (diffInMinutes < 60) return `${diffInMinutes}min atrás`;
-    if (diffInMinutes < 24 * 60) return `${Math.floor(diffInMinutes / 60)}h atrás`;
-    return format(date, 'dd/MM HH:mm', { locale: ptBR });
+    return formatTimeAgo(date.toISOString());
   };
 
   return (

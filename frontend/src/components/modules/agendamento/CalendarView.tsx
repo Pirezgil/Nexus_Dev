@@ -9,6 +9,7 @@ import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { getCurrentDateForInput, combineDateTime, extractDateForInput, extractTimeForInput, toISOString } from '@/lib/dates';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -25,8 +26,9 @@ import {
 } from 'lucide-react';
 
 // Importar componentes da biblioteca refatorada
-import { Button, LoadingSpinner, Alert, Select } from '@shared/components/ui';
+import { Button, LoadingSpinner, Alert, Select } from '@/components/ui';
 import { api, API_ROUTES } from '@/lib/api';
+import { getProfessionalStatusInfo } from '@/utils/professional-status';
 
 // Interfaces
 interface CalendarData {
@@ -84,6 +86,35 @@ interface CalendarEvent {
 }
 
 interface CalendarViewProps {
+  events?: Array<{
+    id: string;
+    title: string;
+    start: string;
+    end: string;
+    resourceId: string;
+    backgroundColor?: string;
+    borderColor?: string;
+    textColor?: string;
+    extendedProps: any;
+  }>;
+  scheduleBlocks?: Array<{
+    id: string;
+    professionalId: string;
+    startTime: string;
+    endTime: string;
+    reason: string;
+  }>;
+  professionals?: Array<{
+    id: string;
+    name: string;
+    photo_url?: string;
+    color?: string;
+    specialties?: string[];
+    status?: 'ACTIVE' | 'INACTIVE' | 'VACATION' | 'SICK_LEAVE';
+  }>;
+  loading?: boolean;
+  selectedDate?: Date;
+  onDateChange?: (date: Date) => void;
   onNewAppointment?: (date?: string, time?: string, professionalId?: string) => void;
   onAppointmentClick?: (appointmentId: string) => void;
   onAppointmentEdit?: (appointmentId: string) => void;
@@ -91,6 +122,12 @@ interface CalendarViewProps {
 }
 
 export const CalendarView: React.FC<CalendarViewProps> = ({
+  events = [],
+  scheduleBlocks = [],
+  professionals = [],
+  loading = false,
+  selectedDate,
+  onDateChange,
   onNewAppointment,
   onAppointmentClick,
   onAppointmentEdit,
@@ -113,11 +150,11 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     error,
     refetch 
   } = useQuery<CalendarData>({
-    queryKey: ['calendar', view, currentDate.toISOString().split('T')[0], selectedProfessional],
+    queryKey: ['calendar', view, format(currentDate, 'yyyy-MM-dd'), selectedProfessional],
     queryFn: async () => {
       const params = new URLSearchParams({
         view,
-        date: currentDate.toISOString().split('T')[0],
+        date: format(currentDate, 'yyyy-MM-dd'),
         ...(selectedProfessional !== 'all' && { professional_id: selectedProfessional })
       });
       
@@ -288,9 +325,10 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     try {
       const appointmentId = dropInfo.event.extendedProps.appointment.id;
       
+      const newStartTime = toISOString(new Date(dropInfo.event.startStr));
+      
       await api.put(`${API_ROUTES.agendamento}/appointments/${appointmentId}`, {
-        appointment_date: dropInfo.event.startStr.split('T')[0],
-        appointment_time: dropInfo.event.startStr.split('T')[1].substring(0, 5),
+        start_time: newStartTime,
         reschedule_reason: 'Reagendado via calendário'
       });
 
@@ -311,10 +349,12 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     try {
       const appointmentId = resizeInfo.event.extendedProps.appointment.id;
       
+      const newStartTime = toISOString(new Date(resizeInfo.event.startStr));
+      const newEndTime = toISOString(new Date(resizeInfo.event.endStr));
+      
       await api.put(`${API_ROUTES.agendamento}/appointments/${appointmentId}`, {
-        appointment_date: resizeInfo.event.startStr.split('T')[0],
-        appointment_time: resizeInfo.event.startStr.split('T')[1].substring(0, 5),
-        // Calcular nova duração baseada no resize
+        start_time: newStartTime,
+        end_time: newEndTime,
         notes: 'Duração alterada via calendário'
       });
 
@@ -399,10 +439,20 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                 onChange={setSelectedProfessional}
                 options={[
                   { value: 'all', label: 'Todos os profissionais' },
-                  ...calendarData.professionals.map(prof => ({
-                    value: prof.id,
-                    label: prof.name
-                  }))
+                  ...calendarData.professionals.map(prof => {
+                    let label = prof.name;
+                    // Adicionar indicador de status se o profissional tiver status
+                    if (prof.status) {
+                      const statusInfo = getProfessionalStatusInfo(prof.status);
+                      if (!statusInfo.available) {
+                        label = `${prof.name} (${statusInfo.label})`;
+                      }
+                    }
+                    return {
+                      value: prof.id,
+                      label
+                    };
+                  })
                 ]}
               />
             </div>

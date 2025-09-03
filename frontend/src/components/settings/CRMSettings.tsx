@@ -38,6 +38,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from '@/lib/toast';
+import { getCurrentISOString } from '@/lib/dates';
 
 // Types
 interface CustomField {
@@ -196,7 +197,7 @@ export const CRMSettings: React.FC = () => {
           required: data.required,
           active: data.active,
           display_order: customFields.length + 1,
-          created_at: new Date().toISOString(),
+          created_at: getCurrentISOString(),
         };
         
         setCustomFields(fields => [...fields, newField]);

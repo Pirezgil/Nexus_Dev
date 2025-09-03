@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { professionalController } from '../controllers/professionalController';
-import { authenticate, authorize, requireCompanyAccess } from '../middleware/auth';
+import { gatewayAuthenticate, authorize, requireCompanyAccess } from '../middleware/gatewayAuth';
 import { validate, validatePagination } from '../middleware/validation';
 import { ProfessionalCreateSchema, ProfessionalUpdateSchema } from '../types';
 
 const router = Router();
 
 // Apply authentication to all professional routes
-router.use(authenticate);
+router.use(gatewayAuthenticate);
 router.use(requireCompanyAccess);
 
 /**

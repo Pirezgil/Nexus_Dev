@@ -11,7 +11,7 @@ import { LoginForm } from '@/components/modules/auth/LoginForm';
 import { useAuthStore } from '@/stores/auth';
 
 // ✅ CORRIGIDO: Importação das cores do Design System
-import { customColors } from '@shared/components/ui';
+import { customColors } from '@/components/ui';
 
 export default function LoginPage() {
   const router = useRouter();

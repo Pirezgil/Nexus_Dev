@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
 
 // ✅ CORRIGIDO: Importações da nova biblioteca modular
-import { Button, Input, Alert, customColors } from '@shared/components/ui';
+import { Button, Input, Alert, customColors } from '@/components/ui';
 import { useAuthStore } from '@/stores/auth';
 import { useToast } from '@/stores/ui';
 import { cn } from '@/utils';

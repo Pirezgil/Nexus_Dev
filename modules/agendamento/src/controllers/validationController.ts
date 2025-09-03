@@ -6,6 +6,7 @@
 import { Request, Response } from 'express';
 import { appointmentService } from '../services/appointmentService';
 import { Logger } from '../utils/logger';
+import { HTTP_HEADERS, getHeaderKey } from '../../../../../shared/constants/headers';
 
 const logger = new Logger('ValidationController');
 
@@ -18,12 +19,12 @@ export class ValidationController {
   static async validateAppointment(req: Request, res: Response) {
     try {
       const { id: appointmentId } = req.params;
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = req.headers[getHeaderKey(HTTP_HEADERS.COMPANY_ID)] as string;
 
       if (!companyId) {
         return res.status(400).json({
           exists: false,
-          error: 'Company ID is required in headers (x-company-id)'
+          error: 'Company ID is required in headers'
         });
       }
 
@@ -73,12 +74,12 @@ export class ValidationController {
     try {
       const { id: appointmentId } = req.params;
       const { status } = req.query;
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = req.headers[getHeaderKey(HTTP_HEADERS.COMPANY_ID)] as string;
 
       if (!companyId) {
         return res.status(400).json({
           exists: false,
-          error: 'Company ID is required in headers (x-company-id)'
+          error: 'Company ID is required in headers'
         });
       }
 
@@ -140,12 +141,12 @@ export class ValidationController {
   static async validateAppointmentsByCustomer(req: Request, res: Response) {
     try {
       const { customerId } = req.params;
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = req.headers[getHeaderKey(HTTP_HEADERS.COMPANY_ID)] as string;
 
       if (!companyId) {
         return res.status(400).json({
           exists: false,
-          error: 'Company ID is required in headers (x-company-id)'
+          error: 'Company ID is required in headers'
         });
       }
 
@@ -182,12 +183,12 @@ export class ValidationController {
   static async validateAppointmentsByProfessional(req: Request, res: Response) {
     try {
       const { professionalId } = req.params;
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = req.headers[getHeaderKey(HTTP_HEADERS.COMPANY_ID)] as string;
 
       if (!companyId) {
         return res.status(400).json({
           exists: false,
-          error: 'Company ID is required in headers (x-company-id)'
+          error: 'Company ID is required in headers'
         });
       }
 
@@ -225,11 +226,11 @@ export class ValidationController {
   static async validateAppointmentsBatch(req: Request, res: Response) {
     try {
       const { appointmentIds } = req.body;
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = req.headers[getHeaderKey(HTTP_HEADERS.COMPANY_ID)] as string;
 
       if (!companyId) {
         return res.status(400).json({
-          error: 'Company ID is required in headers (x-company-id)'
+          error: 'Company ID is required in headers'
         });
       }
 
@@ -291,12 +292,12 @@ export class ValidationController {
   static async validateTimeSlot(req: Request, res: Response) {
     try {
       const { professionalId, date, time, endTime, excludeId } = req.body;
-      const companyId = req.headers['x-company-id'] as string;
+      const companyId = req.headers[getHeaderKey(HTTP_HEADERS.COMPANY_ID)] as string;
 
       if (!companyId) {
         return res.status(400).json({
           available: false,
-          error: 'Company ID is required in headers (x-company-id)'
+          error: 'Company ID is required in headers'
         });
       }
 

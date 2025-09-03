@@ -52,7 +52,7 @@ const crmProxy = createProxyMiddleware({
   pathRewrite: {
     '^/api/crm': '/api/crm' // Maintain the API path structure
   },
-  timeout: 45000, // 45 seconds for CRM operations (some might be complex)
+  timeout: parseInt(process.env.TIMEOUT_GATEWAY_CRM || '60000', 10), // Configurable timeout for CRM operations
   
   onProxyReq: (proxyReq, req: any, res) => {
     const requestId = req.requestId || 'unknown';

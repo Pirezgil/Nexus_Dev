@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { reportController } from '../controllers/reportController';
-import { authenticate, authorize, requireCompanyAccess } from '../middleware/auth';
+import { authenticate, authorize, requireCompanyAccess } from '../middleware/authCompat';
 import { customRateLimit } from '../middleware/validation';
 
 const router = Router();
