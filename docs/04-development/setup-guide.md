@@ -58,7 +58,7 @@ npm run prisma:generate
 npm run prisma:migrate
 npm run dev
 ```
-**URL:** http://localhost:5002
+**URL:** http://localhost:5004
 
 #### **Services**
 ```bash
@@ -78,7 +78,7 @@ npm run prisma:generate
 npm run prisma:migrate
 npm run dev
 ```
-**URL:** http://localhost:5007
+**URL:** http://localhost:5008
 
 ### **4. Setup Frontend**
 ```bash
@@ -86,7 +86,7 @@ cd frontend
 npm install
 npm run dev
 ```
-**URL:** http://localhost:3000
+**URL:** http://localhost:5000 (Docker) ou http://localhost:3000 (Local Dev)
 
 ## ⚙️ Configuração de Ambiente
 
@@ -109,11 +109,12 @@ NODE_ENV=development
 ### **Portas por Módulo**
 | Serviço | Porta | URL |
 |:--------|:-----:|:----|
-| Frontend | 3000 | http://localhost:3000 |
-| User Management | 5001 | http://localhost:5001 |
-| CRM | 5002 | http://localhost:5002 |
-| Services | 5003 | http://localhost:5003 |
-| Agendamento | 5007 | http://localhost:5007 |
+| Frontend (Docker) | 5000 | http://localhost:5000 |
+| Frontend (Local Dev) | 3000 | http://localhost:3000 |
+| User Management | 5003 | http://localhost:5003 |
+| CRM | 5004 | http://localhost:5004 |
+| Services | 5005 | http://localhost:5005 |
+| Agendamento | 5008 | http://localhost:5008 |
 | PostgreSQL | 5433 | localhost:5433 |
 | Redis | 6379 | localhost:6379 |
 
@@ -195,10 +196,10 @@ docker-compose build --no-cache
 #### **Porta já está em uso**
 ```bash
 # Encontrar processo usando a porta
-lsof -ti:5001
+lsof -ti:5003
 
 # Matar processo
-kill -9 $(lsof -ti:5001)
+kill -9 $(lsof -ti:5003)
 ```
 
 #### **Database connection error**
@@ -251,10 +252,10 @@ docker-compose logs --tail=100
 npm run health:check
 
 # Ou verificação manual:
-curl http://localhost:5001/health  # User Management
-curl http://localhost:5002/health  # CRM
-curl http://localhost:5003/health  # Services
-curl http://localhost:5007/health  # Agendamento
+curl http://localhost:5003/health  # User Management
+curl http://localhost:5004/health  # CRM
+curl http://localhost:5005/health  # Services
+curl http://localhost:5008/health  # Agendamento
 ```
 
 ### **Resposta Esperada**

@@ -299,7 +299,7 @@ SERVICES_SERVICE_URL=http://localhost:3003
 AGENDAMENTO_SERVICE_URL=http://localhost:3004
 
 # Database connection
-DATABASE_URL=postgresql://user:pass@localhost:5432/nexus_erp
+DATABASE_URL=postgresql://user:pass@localhost:5433/nexus_erp
 
 # Logging level
 LOG_LEVEL=info

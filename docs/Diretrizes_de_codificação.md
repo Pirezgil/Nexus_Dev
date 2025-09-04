@@ -5,14 +5,12 @@
 **Estrutura:** Módulos independentes com comunicação via APIs e Message Broker (Redis)
 
 ### Portas de Desenvolvimento (Docker Compose)
-- **Frontend:** http://localhost:5000 (Next.js)  
-- **Backend API Gateway:** http://localhost:5001 (Express)  
-- **Módulo Auth:** http://localhost:5002  
+- **Frontend:** http://localhost:5000 (Next.js via Nginx)  
+- **API Gateway:** http://localhost:5001 (Express - interno) | http://localhost:5000 (via Nginx - externo)  
 - **Módulo User Management:** http://localhost:5003  
 - **Módulo CRM:** http://localhost:5004  
-- **Módulo Sales:** http://localhost:5005  
-- **Módulo Inventory:** http://localhost:5006  
-- **Módulo Financial:** http://localhost:5007  
+- **Módulo Services:** http://localhost:5005  
+- **Módulo Agendamento:** http://localhost:5008  
 - **Database:** PostgreSQL:5433  
 - **Redis:** localhost:6379  
 - **Nginx:** http://localhost:80 (Proxy Reverso)

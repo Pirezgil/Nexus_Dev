@@ -1,8 +1,13 @@
+⚠️ **DOCUMENTO OBSOLETO - SETEMBRO 2025**
+> Este documento descreve uma arquitetura de dual-gateway que foi descontinuada. A arquitetura atual usa apenas Nginx como proxy reverso para o API Gateway Node.js na porta 5001. Mantido apenas para referência histórica.
+
+---
+
 # 🔍 RELATÓRIO DE AUDITORIA - CAMADA API GATEWAY DO NEXUS ERP
 
 **Data:** 03/09/2025  
-**Status:** CRÍTICO - MÚLTIPLOS GATEWAYS COM CONFLITOS DE ROTEAMENTO  
-**Impacto:** Alto - Falhas de timeout, erros CRUD, problemas de autenticação  
+**Status:** ~~CRÍTICO~~ **RESOLVIDO** - Arquitetura simplificada implementada  
+**Impacto:** ~~Alto~~ **ZERO** - Problemas resolvidos com arquitetura única  
 
 ---
 

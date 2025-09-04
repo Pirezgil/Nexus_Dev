@@ -225,7 +225,7 @@ CREATE INDEX idx_custom_values_customer ON customer_custom_values(customer_id);
 
 ## 🔗 APIs REST Detalhadas
 
-### **Base URL:** `http://localhost:5002/api`
+### **Base URL:** `http://localhost:5004/api`
 
 ### **Endpoints de Clientes**
 
@@ -837,7 +837,7 @@ describe('CRM Module Integration', () => {
 nexus-crm:
   build: ./modules/crm
   ports:
-    - "5002:5000"
+    - "5004:3000"
   environment:
     - NODE_ENV=development
     - DATABASE_URL=postgresql://nexus_crm_user:password@postgres:5432/nexus_erp?schema=nexus_crm

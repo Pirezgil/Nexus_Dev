@@ -29,7 +29,7 @@
 | Auditoria básica de login | BAIXA | Baixa |
 
 **Tecnologias:**
-- Container: `nexus-user-management:5001`
+- Container: `nexus-user-management:5003`
 - Database: Schema `nexus_auth`
 - JWT + Company isolation
 
@@ -46,7 +46,7 @@
 | Importação CSV clientes | BAIXA | Alta |
 
 **Tecnologias:**
-- Container: `nexus-crm:5002`
+- Container: `nexus-crm:5004`
 - Database: Schema `nexus_crm`
 - APIs REST para Services/Agendamento
 
@@ -64,7 +64,7 @@
 | Relatório Diário (atendimentos + faturamento) | MÉDIA | Média |
 
 **Tecnologias:**
-- Container: `nexus-services:5003`
+- Container: `nexus-services:5005`
 - Database: Schema `nexus_services`
 - Integração: CRM + Agendamento + User Management
 
@@ -82,7 +82,7 @@
 | Relatório mensal de agendamentos | MÉDIA | Média |
 
 **Tecnologias:**
-- Container: `nexus-agendamento:5007`  
+- Container: `nexus-agendamento:5008`  
 - Database: Schema `nexus_agendamento`
 - Integração: WhatsApp Business API + Services
 
@@ -155,19 +155,19 @@
 # docker-compose.yml MVP
 services:
   nexus-user-management:
-    ports: ["5001:5000"]
+    ports: ["5003:3000"]
     resources: { cpu: 0.5, memory: 1GB }
     
   nexus-crm:
-    ports: ["5002:5000"]  
+    ports: ["5004:3000"]  
     resources: { cpu: 0.5, memory: 1GB }
     
   nexus-services:           # ⭐ NOVO
-    ports: ["5003:5000"]
+    ports: ["5005:3000"]
     resources: { cpu: 1.0, memory: 2GB }  # Processa fotos e relatórios
     
   nexus-agendamento:
-    ports: ["5007:5000"]
+    ports: ["5008:3000"]
     resources: { cpu: 1.0, memory: 2GB }  # Calendário + integração Services
     
   postgres:

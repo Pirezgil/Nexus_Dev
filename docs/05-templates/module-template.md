@@ -339,7 +339,7 @@ PORT=5000
 DATABASE_URL=postgresql://nexus_[nome_modulo]_user:password@localhost:5433/nexus_erp?schema=nexus_[nome_modulo]
 
 # Integração com outros módulos
-USER_MANAGEMENT_URL=http://localhost:5001
+USER_MANAGEMENT_URL=http://localhost:5003
 [OUTRO_MODULO]_URL=http://localhost:[PORTA]
 
 # Redis

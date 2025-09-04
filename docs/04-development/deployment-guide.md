@@ -15,7 +15,7 @@ Guia completo para deploy em produção com Docker Swarm, IA monitoring e estrat
 │                Docker Swarm Cluster                    │
 ├──────────────┬──────────────┬──────────────┬───────────┤
 │ User Mgmt    │     CRM      │   Services   │Agendamento│
-│   :5001      │    :5002     │    :5003     │   :5007   │
+│   :5003      │    :5004     │    :5005     │   :5008   │
 └──────────────┴──────────────┴──────────────┴───────────┘
 ┌────────────────────────────────────────────────────────┐
 │          PostgreSQL + Redis + Monitoring               │

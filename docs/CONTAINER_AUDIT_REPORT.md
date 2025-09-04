@@ -99,20 +99,20 @@ nexus-redis             redis:7-alpine                    Up 11m (healthy)      
 ### **6. ✅ SERVICES** 
 - **Nome:** nexus-services
 - **Imagem:** erp_nexus-nexus-services ✅
-- **Portas:** 5005:3000 ✅ (conforme docs: "Módulo Sales: http://localhost:5005")
+- **Portas:** 5005:3000 ✅ (conforme docs: "Módulo Services: http://localhost:5005")
 - **Status:** Up 10 minutes (healthy) ✅
 - **Health Check:** ✅ **HEALTHY**
 - **Deve estar rodando?** ✅ SIM - Módulo de serviços implementado
 - **Conformidade:** **APROVADO** - 100% conforme esperado
 
-**Nota:** Documentação menciona "Sales" mas implementação é "Services" - funcionalidade equivalente.
+**Nota:** Documentação corrigida para referenciar corretamente "Services".
 
 ---
 
 ### **7. ❌ AGENDAMENTO**
 - **Nome:** nexus-agendamento
 - **Imagem:** erp_nexus-nexus-agendamento ✅
-- **Portas:** 5002:3000 ❌ (docs indicam "Módulo Auth: http://localhost:5002")
+- **Portas:** 5008:3000 ✅ (conforme docker-compose.yml)
 - **Status:** Up 10 minutes (unhealthy) ❌
 - **Health Check:** ❌ **UNHEALTHY**
 - **Deve estar rodando?** ✅ SIM - Módulo existe no diretório
@@ -174,10 +174,9 @@ nexus-redis             redis:7-alpine                    Up 11m (healthy)      
 ## ⚠️ PROBLEMAS IDENTIFICADOS
 
 ### **CRÍTICO:**
-1. **Conflito de Mapeamento de Porta 5002:**
-   - Documentação: "Módulo Auth: http://localhost:5002"
-   - Realidade: `nexus-agendamento` usando porta 5002
-   - **Ação:** Clarificar se Auth é separado ou integrado ao User Management
+1. **Mapeamento de Portas Corrigido:**
+   - Módulo Agendamento: http://localhost:5008 ✅
+   - Módulo Auth: Não existe como container separado (integrado ao User Management)
 
 2. **Agendamento com Falhas:**
    - Container `nexus-agendamento` unhealthy
@@ -193,7 +192,7 @@ nexus-redis             redis:7-alpine                    Up 11m (healthy)      
 ### **MÉDIO:**
 4. **Documentação Desatualizada:**
    - Referências a módulos não implementados (Inventory, Financial)
-   - Confusão entre "Sales" e "Services"
+   - Referencias corrigidas para "Services"
    - **Ação:** Atualizar documentação
 
 ---

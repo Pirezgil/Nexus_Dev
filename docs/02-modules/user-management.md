@@ -135,7 +135,7 @@ CREATE INDEX idx_companies_active ON companies(is_active);
 
 ## 🔗 APIs REST Detalhadas
 
-### **Base URL:** `http://localhost:5001/api`
+### **Base URL:** `http://localhost:5003/api`
 
 ### **Endpoints Públicos (Sem Auth)**
 
@@ -573,7 +573,7 @@ describe('JWT Utils', () => {
 nexus-user-management:
   build: ./modules/user-management
   ports:
-    - "5001:5000"
+    - "5003:3000"
   environment:
     - NODE_ENV=development
     - DATABASE_URL=postgresql://nexus_auth_user:password@postgres:5432/nexus_erp?schema=nexus_auth

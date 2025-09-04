@@ -320,7 +320,7 @@ CREATE INDEX idx_notifications_status ON appointment_notifications(status, sent_
 
 ## 🔗 APIs REST Detalhadas
 
-### **Base URL:** `http://localhost:5007/api`
+### **Base URL:** `http://localhost:5008/api`
 
 ### **Endpoints de Agendamentos**
 
@@ -1263,7 +1263,7 @@ describe('Agendamento Module Integration', () => {
 nexus-agendamento:
   build: ./modules/agendamento
   ports:
-    - "5007:5000"
+    - "5008:3000"
   environment:
     - NODE_ENV=development
     - DATABASE_URL=postgresql://nexus_agendamento_user:password@postgres:5432/nexus_erp?schema=nexus_agendamento
