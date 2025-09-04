@@ -58,7 +58,8 @@ const proxyRequest = async (targetUrl, req, res, requireAuth = false) => {
     const response = await fetch(targetUrl, {
       method: req.method,
       headers,
-      body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined
+      body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
+      timeout: 30000  // 30 second timeout
     });
 
     const data = await response.text();
@@ -155,44 +156,44 @@ app.get('/api/agendamento/schedule-blocks', (req, res) => {
 // Customers CRUD
 app.get('/api/crm/customers', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5002/api/customers${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5004/api/customers${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/crm/customers/:id', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}`, req, res, true);
 });
 
 app.post('/api/crm/customers', (req, res) => {
-  proxyRequest('http://localhost:5002/api/customers', req, res, true);
+  proxyRequest('http://localhost:5004/api/customers', req, res, true);
 });
 
 app.put('/api/crm/customers/:id', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}`, req, res, true);
 });
 
 app.delete('/api/crm/customers/:id', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}`, req, res, true);
 });
 
 // Customer Interactions
 app.get('/api/crm/customers/:id/interactions', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5002/api/customers/${req.params.id}/interactions${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5004/api/customers/${req.params.id}/interactions${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.post('/api/crm/customers/:id/interactions', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/interactions`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/interactions`, req, res, true);
 });
 
 // Customer Notes
 app.get('/api/crm/customers/:id/notes', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/notes`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/notes`, req, res, true);
 });
 
 app.post('/api/crm/customers/:id/notes', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/notes`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/notes`, req, res, true);
 });
 
 // Customer Segments
@@ -346,7 +347,7 @@ app.delete('/api/agendamento/appointments/:id', (req, res) => {
 
 // CRM data for other modules
 app.get('/api/crm/customers/:id/basic', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/basic`, req, res, true);
+  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/basic`, req, res, true);
 });
 
 // Services data for other modules

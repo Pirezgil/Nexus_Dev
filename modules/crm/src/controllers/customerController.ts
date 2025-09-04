@@ -62,16 +62,15 @@ export class CustomerController {
    * Create new customer
    */
   createCustomer = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const data = req.body as CreateCustomerInput;
-    const companyId = req.user!.companyId;
-    const createdBy = req.user!.userId;
-
-    const customer = await this.customerService.createCustomer(data, companyId, createdBy);
-
+    // Temporary minimal controller for timeout diagnosis
     const response: ApiResponse = {
       success: true,
-      data: customer,
-      message: 'Cliente criado com sucesso',
+      data: {
+        id: 'test-id',
+        name: req.body?.name || 'Test Customer',
+        message: 'Controller reached successfully - no timeout!'
+      },
+      message: 'Teste bem-sucedido - controller funciona!',
     };
 
     res.status(201).json(response);

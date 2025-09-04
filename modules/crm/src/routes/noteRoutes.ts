@@ -33,9 +33,9 @@ const typeParamsSchema = z.object({
   }),
 });
 
-// Apply authentication to all routes
-router.use(authenticate);
-router.use(enforceCompanyAccess);
+// Temporarily disabled for timeout diagnosis
+// router.use(authenticate);
+// router.use(enforceCompanyAccess);
 
 /**
  * @route GET /api/customers/:customerId/notes

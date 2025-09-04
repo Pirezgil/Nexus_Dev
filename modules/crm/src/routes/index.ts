@@ -17,19 +17,19 @@ router.use('/health', healthRoutes);
 // Validation routes temporarily disabled for infrastructure setup
 
 // Customer management routes
-router.use('/api/customers', customerRoutes);
+router.use('/customers', customerRoutes);
 
 // Customer notes routes (nested under customers)
-router.use('/api/customers/:customerId/notes', noteRoutes);
+router.use('/customers/:customerId/notes', noteRoutes);
 
 // Customer interactions routes (nested under customers)
-router.use('/api/customers/:customerId/interactions', interactionRoutes);
+router.use('/customers/:customerId/interactions', interactionRoutes);
 
 // Statistics routes
-router.use('/api/stats', statsRoutes);
+router.use('/stats', statsRoutes);
 
 // API Info route
-router.get('/api', (req, res) => {
+router.get('/', (req, res) => {
   res.json({
     success: true,
     data: {
@@ -51,7 +51,7 @@ router.get('/api', (req, res) => {
 });
 
 // Catch-all for undefined API routes
-router.all('/api/*', (req, res) => {
+router.all('/*', (req, res) => {
   res.status(404).json({
     success: false,
     error: 'NotFound',

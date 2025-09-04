@@ -60,8 +60,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - JWT_EXPIRES_IN=24h
       - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
@@ -97,8 +97,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
       - USER_MANAGEMENT_URL=http://nexus-user-management:3000
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
@@ -136,8 +136,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
       - USER_MANAGEMENT_URL=http://nexus-user-management:3000
       - CRM_URL=http://nexus-crm:3000
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
@@ -181,8 +181,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - DATABASE_URL=postgresql://nexus_user:nexus_password@postgres:5432/nexus_erp
-      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
       - USER_MANAGEMENT_URL=http://nexus-user-management:3000
       - CRM_URL=http://nexus-crm:3000
       - SERVICES_URL=http://nexus-services:3000

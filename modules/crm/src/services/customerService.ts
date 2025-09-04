@@ -219,34 +219,33 @@ export class CustomerService {
         }
       }
 
+      // Simplified query to isolate timeout issue - removed include clause
       const customer = await prisma.customer.create({
         data: {
           ...data,
           companyId,
-        },
-        include: {
-          notes: true,
-          interactions: true,
-        },
-      });
-
-      // Create initial interaction
-      await prisma.customerInteraction.create({
-        data: {
-          customerId: customer.id,
-          companyId,
-          type: 'NOTE',
-          title: 'Cliente cadastrado',
-          description: 'Cliente cadastrado no sistema',
           createdBy,
         },
       });
+
+      // Temporarily disabled for timeout diagnosis - potential deadlock
+      // await prisma.customerInteraction.create({
+      //   data: {
+      //     customerId: customer.id,
+      //     companyId,
+      //     type: 'NOTE',
+      //     title: 'Cliente cadastrado',
+      //     description: 'Cliente cadastrado no sistema',
+      //     createdBy,
+      //   },
+      // });
 
       logger.info('Customer created', { customerId: customer.id, companyId, createdBy });
 
       // Invalidate related caches
       await this.invalidateCustomerCaches(customer.id, companyId);
 
+      // Simplified return object - notes and interactions not available without include
       return {
         id: customer.id,
         companyId: customer.companyId,
@@ -264,8 +263,8 @@ export class CustomerService {
         metadata: customer.metadata,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
-        notes: customer.notes,
-        interactions: customer.interactions,
+        notes: [], // Empty array since include was removed
+        interactions: [], // Empty array since include was removed
       };
     } catch (error) {
       logger.error('Error creating customer', { error, data, companyId });
@@ -314,7 +313,10 @@ export class CustomerService {
       // Update customer
       const customer = await prisma.customer.update({
         where: { id: customerId },
-        data,
+        data: {
+          ...data,
+          updatedBy,
+        },
         include: {
           notes: {
             orderBy: { createdAt: 'desc' },

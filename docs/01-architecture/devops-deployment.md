@@ -12,9 +12,6 @@ Baseado em análise de **padrão de uso diferenciado** entre módulos:
 | **User Management** | 100% clientes | Requer máximo scale e disponibilidade |
 | **Agendamento** | 30% clientes | Precisa recursos mínimos, scale baixo |
 | **CRM** | 80% clientes | Uso médio, scale sob demanda |
-| **Sales** | 70% clientes | Picos comerciais, precisa scale rápido |
-| **Inventory** | 60% clientes | Scale durante reposições |
-| **Financial** | 90% clientes | Picos fim de mês, recursos robustos |
 
 ### Configuração de Recursos por Container
 
@@ -23,9 +20,6 @@ Baseado em análise de **padrão de uso diferenciado** entre módulos:
 | User Management | 2 CPU | 4GB | 8 | CPU > 70% por 5min |
 | Agendamento | 0.5 CPU | 1GB | 2 | CPU > 80% por 10min |
 | CRM | 1 CPU | 2GB | 4 | Requests > 100/min |
-| Sales | 1 CPU | 2GB | 6 | Response time > 2s |
-| Inventory | 1 CPU | 2GB | 3 | Picos comerciais |
-| Financial | 1.5 CPU | 3GB | 4 | Fim de mês + relatórios |
 
 ### Docker Compose Estrutura
 ```yaml
@@ -33,7 +27,7 @@ version: '3.8'
 services:
   nexus-user-management:
     image: nexus-user-management:latest
-    ports: ["5001:5000"]
+    ports: ["5003:3000"]
     deploy:
       replicas: 2
       resources:
@@ -41,7 +35,7 @@ services:
   
   nexus-agendamento:
     image: nexus-agendamento:latest
-    ports: ["5007:5000"]  
+    ports: ["5008:3000"]  
     deploy:
       replicas: 1
       resources:
@@ -106,7 +100,7 @@ services:
 | Schema Migration | Migration Scripts | runStagingMigrations() | Aplica mudanças de banco em schema staging |
 | Integration Tests | Test Suite | runCompatibilityTests() | Executa 500+ testes automáticos |
 | Cross-Module Tests | API Testing | testModuleCommunication() | Valida comunicação entre módulos |
-| Business Tests | E2E Testing | simulateBusinessFlow() | Simula operações reais (cliente → venda → estoque) |
+| Business Tests | E2E Testing | simulateBusinessFlow() | Simula operações reais de negócio |
 | Approval Gate | Automation | validateResults() | ✅ Libera produção / ❌ Bloqueia deploy |
 
 ### Fluxo de Deploy Modular
@@ -128,9 +122,9 @@ Developer Push → Staging Deploy → Testes 100% → Aprovação → Produção
 ```
 CRM (adiciona campo "telefone2") 
   ↓ 
-Sales (precisa desse telefone2 para whatsapp) 
+Agendamento (precisa desse telefone2 para notificações)
   ↓ 
-Financial (precisa saber origem do contato)
+User Management (precisa saber origem do contato)
 ```
 
 #### Implementação Centralizada
@@ -147,12 +141,11 @@ Financial (precisa saber origem do contato)
 📋 nexus_database_map.md
 ├── 🏠 Módulo CRM
 │   ├── tabela: customers (id, name, email, telefone1, telefone2)
-│   ├── usado por: Sales.orders.customer_id, Financial.transactions.customer_id
+│   ├── usado por: Agendamento.appointments.customer_id
 │   └── dependências: User_Management.users.id
-├── 🏠 Módulo Sales  
-│   ├── tabela: orders (customer_id REFERENCES CRM.customers)
-│   ├── usado por: Financial.invoices, Inventory.stock_movements
-│   └── dependências: CRM.customers, Inventory.products
+├── 🏠 Módulo Agendamento
+│   ├── tabela: appointments (customer_id REFERENCES CRM.customers)
+│   └── dependências: CRM.customers, User_Management.users
 └── [outros módulos...]
 ```
 
@@ -224,8 +217,8 @@ interface AIContainerDecisions {
 #### Scale Predictivo
 ```python
 # IA detecta padrões e antecipa demanda
-if is_month_end() and financial_requests_trend > 200%:
-    scale_container("financial", instances=4)
+if is_month_end() and crm_requests_trend > 200%:
+    scale_container("crm", instances=4)
     
 if is_business_hours() and crm_usage > baseline * 1.5:
     scale_container("crm", instances=3)
@@ -235,8 +228,8 @@ if is_business_hours() and crm_usage > baseline * 1.5:
 ```python
 # IA detecta degradação antes do crash
 if response_time > normal_baseline * 3 and error_rate > 5%:
-    restart_container("sales")
-    alert_telegram("Sales container restarted preventively")
+    restart_container("crm")
+    alert_telegram("CRM container restarted preventively")
     
 # Detecção de comunicação lenta entre containers
 if inter_container_latency > 500ms:
@@ -248,7 +241,7 @@ if inter_container_latency > 500ms:
 ```
 🐳 NEXUS - ALERTA CONTAINER
 
-Container: nexus-sales
+Container: nexus-crm
 Problema: CPU em 95% há 10min
 Ação Tomada: Scale up para 3 instâncias
 Impacto: Response time normalizado
@@ -258,7 +251,7 @@ Métricas:
 - Memory usage: 85%
 - Error rate: 2%
 
-Causa Provável: Pico de vendas detectado
+Causa Provável: Pico de uso do CRM detectado
 Próxima Ação: Monitorar por 30min
 
 Dashboard: https://nexus-monitoring.com/containers
@@ -346,26 +339,8 @@ def analyze_rollback_scope(failed_module, error_type):
 | Notificação | Alert Manager | notifyRollbackComplete() | Imediato |
 
 ### Alertas de Rollback Contextual
-```
-🔄 NEXUS - ROLLBACK INTELIGENTE
 
-Módulo Falhou: Sales v2.0
-Problema: API breaking changes detectados
-Análise IA: CRM + Financial afetados
-
-Ação Tomada: Rollback dependency chain
-- Sales: v2.0 → v1.9 ✅
-- CRM: v2.1 → v2.0 ✅  
-- Financial: mantém v1.8 ✅
-
-Tempo Total: 4min 23s
-Status: Sistema estabilizado
-Clientes Impactados: 12 (notificados)
-
-Próximos Passos:
-1. Investigar logs da v2.0
-2. Agendar novo deploy pós correção
-```
+O sistema de rollback inteligente analisa falhas em tempo real e executa a reversão mínima necessária para restaurar a estabilidade do sistema. As decisões são baseadas na análise de dependências entre os módulos ativos (CRM, Agendamento, User Management) e no tipo de erro detectado, garantindo que apenas os componentes afetados sejam revertidos, minimizando o tempo de inatividade.
 
 ## 8. Coleta de Dados Inteligente Durante Crises
 
