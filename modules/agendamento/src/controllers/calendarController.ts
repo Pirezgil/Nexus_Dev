@@ -12,7 +12,9 @@ import {
   ErrorCode,
   AppointmentError,
   ICreateScheduleBlockRequest,
-  BlockType
+  BlockType,
+  ScheduleBlockQuery,
+  CreateScheduleBlockData
 } from '../types';
 import { calendarService } from '../services/calendarService';
 import { scheduleBlockService } from '../services/scheduleBlockService';
@@ -34,7 +36,7 @@ const createBlockSchema = z.object({
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data final deve estar no formato YYYY-MM-DD'),
   start_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
   end_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/).optional(),
-  block_type: z.enum(['holiday', 'vacation', 'maintenance', 'personal', 'break', 'lunch']),
+  block_type: z.nativeEnum(BlockType),
   title: z.string().min(1).max(255, 'Título deve ter no máximo 255 caracteres'),
   description: z.string().max(1000, 'Descrição deve ter no máximo 1000 caracteres').optional(),
   is_recurring: z.boolean().default(false),
@@ -45,7 +47,7 @@ const scheduleBlocksQuerySchema = z.object({
   professional_id: z.string().uuid().optional(),
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  block_type: z.enum(['holiday', 'vacation', 'maintenance', 'personal', 'break', 'lunch']).optional(),
+  block_type: z.nativeEnum(BlockType).optional(),
   active: z.coerce.boolean().optional(),
   page: z.coerce.number().min(1).optional(),
   limit: z.coerce.number().min(1).max(100).optional()

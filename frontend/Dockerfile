@@ -1,38 +1,80 @@
-# ERP Nexus Frontend - Next.js 15
-FROM node:18-alpine
+# ==========================================
+# ERP Nexus Frontend - Next.js 15 (Multi-Stage Optimizada)
+# ==========================================
+# Dockerfile multi-stage para resolver o erro "Could not find the module... in the React Client Manifest"
+# Garante que todos os artefatos do Next.js sejam copiados corretamente para produção
+
+# Estágio 1: Instalação de Dependências
+# Isolamento das dependências para melhor cache de layers do Docker
+FROM node:18-alpine AS deps
+RUN apk add --no-cache libc6-compat curl
 
 WORKDIR /app
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# Copiar apenas os arquivos de dependência para otimizar cache
+COPY package.json package-lock.json* ./
 
-# Install dependencies
-COPY package*.json ./
-RUN npm install && npm cache clean --force
+# Instalar APENAS dependências de produção
+RUN npm ci --only=production && npm cache clean --force
 
-# Copy source code
+# ==========================================
+# Estágio 2: Builder - Compilação da Aplicação
+# ==========================================
+FROM node:18-alpine AS builder
+WORKDIR /app
+
+# Copiar dependências do estágio anterior
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Build the application
+# Instalar dependências de desenvolvimento para o build
+RUN npm ci
+
+# Executar build do Next.js - gera arquivos standalone automaticamente
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
 RUN npm run build
 
-# Copy static files and public folder for standalone mode (after build)
-RUN mkdir -p .next/standalone/.next/static && \
-    mkdir -p .next/standalone/public && \
-    cp -r .next/static/* .next/standalone/.next/static/ && \
-    cp -r public/* .next/standalone/public/ && \
-    ls -la .next/standalone/.next/static/ && \
-    ls -la .next/standalone/public/
+# ==========================================
+# Estágio 3: Runtime - Imagem Final de Produção
+# ==========================================
+FROM node:18-alpine AS runner
+WORKDIR /app
 
-# Change working directory to standalone
-WORKDIR /app/.next/standalone
+# Criar usuário não-root para segurança
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
 
-# Expose port
+# Instalar curl para health checks
+RUN apk add --no-cache curl
+
+# Definir variáveis de ambiente de produção
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+
+# Copiar arquivos públicos
+COPY --from=builder /app/public ./public
+
+# Definir permissões corretas
+RUN mkdir .next && chown nextjs:nodejs .next
+
+# Copiar aplicação standalone (gerada automaticamente pelo Next.js)
+# O Next.js 15 com output:'standalone' gera todos os arquivos necessários
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# Mudar para usuário não-root
+USER nextjs
+
+# Expor porta
 EXPOSE 3000
 
-# Health check
+# Health check otimizado
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
-# Start the application
+# Comando de inicialização
+# O Next.js standalone gera automaticamente o server.js com todas as dependências
 CMD ["node", "server.js"]

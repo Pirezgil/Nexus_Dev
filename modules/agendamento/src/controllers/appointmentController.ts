@@ -12,7 +12,9 @@ import {
   IUpdateAppointmentRequest,
   AppointmentStatus,
   ErrorCode,
-  AppointmentError
+  AppointmentError,
+  CreateAppointmentData,
+  UpdateAppointmentData
 } from '../types';
 import { appointmentService } from '../services/appointmentService';
 import { notificationService } from '../services/NotificationServiceNew';
@@ -36,7 +38,7 @@ const updateAppointmentSchema = z.object({
   appointment_time: z.string().regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Horário deve estar no formato HH:MM').optional(),
   notes: z.string().max(1000, 'Observações não podem exceder 1000 caracteres').optional(),
   internal_notes: z.string().max(1000, 'Notas internas não podem exceder 1000 caracteres').optional(),
-  status: z.enum(['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show', 'rescheduled']).optional(),
+  status: z.nativeEnum(AppointmentStatus).optional(),
   reschedule_reason: z.string().max(255, 'Motivo da remarcação não pode exceder 255 caracteres').optional(),
   send_reschedule_notification: z.boolean().optional()
 });
@@ -46,7 +48,7 @@ const appointmentQuerySchema = z.object({
   date_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   professional_id: z.string().uuid().optional(),
   customer_id: z.string().uuid().optional(),
-  status: z.enum(['scheduled', 'confirmed', 'completed', 'cancelled', 'no_show', 'rescheduled']).optional(),
+  status: z.nativeEnum(AppointmentStatus).optional(),
   view: z.enum(['day', 'week', 'month']).optional(),
   page: z.coerce.number().min(1).optional(),
   limit: z.coerce.number().min(1).max(100).optional()
@@ -128,11 +130,21 @@ export const appointmentController = {
         data 
       });
       
-      const appointment = await appointmentService.createAppointment({
-        ...data,
+      const appointmentData: CreateAppointmentData = {
+        customer_id: data.customer_id,
+        professional_id: data.professional_id,
+        service_id: data.service_id,
+        appointment_date: data.appointment_date,
+        appointment_time: data.appointment_time,
+        notes: data.notes,
+        send_confirmation: data.send_confirmation,
+        send_reminder: data.send_reminder,
+        reminder_hours_before: data.reminder_hours_before,
         company_id: user.company_id,
         created_by: user.id
-      });
+      };
+      
+      const appointment = await appointmentService.createAppointment(appointmentData);
       
       appointmentLogger.created({
         appointmentId: appointment.id,
@@ -301,11 +313,19 @@ export const appointmentController = {
         return;
       }
       
-      const appointment = await appointmentService.updateAppointment(id, {
-        ...updates,
+      const updateData: UpdateAppointmentData = {
+        status: updates.status,
+        appointment_time: updates.appointment_time,
+        appointment_date: updates.appointment_date,
+        notes: updates.notes,
+        internal_notes: updates.internal_notes,
+        reschedule_reason: updates.reschedule_reason,
+        send_reschedule_notification: updates.send_reschedule_notification,
         company_id: user.company_id,
         updated_by: user.id
-      });
+      };
+      
+      const appointment = await appointmentService.updateAppointment(id, updateData);
       
       appointmentLogger.updated({
         appointmentId: id,

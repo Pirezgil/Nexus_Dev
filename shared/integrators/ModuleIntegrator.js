@@ -3,14 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BatchValidationError = exports.ModuleIntegrator = void 0;
+exports.ModuleIntegrator = exports.BatchValidationError = void 0;
 const axios_1 = __importDefault(require("axios"));
 const logger_1 = require("../utils/logger");
-
-/**
- * Classe de erro customizada para falhas de validação em lote
- * Fornece informações detalhadas sobre qual validação falhou e por quê
- */
+const headers_1 = require("../constants/headers");
+const timeouts_1 = require("../config/timeouts");
 class BatchValidationError extends Error {
     constructor(message, failedValidationKey, originalError, failedValidationType) {
         super(message);
@@ -18,8 +15,6 @@ class BatchValidationError extends Error {
         this.originalError = originalError;
         this.failedValidationType = failedValidationType;
         this.name = 'BatchValidationError';
-        
-        // Mantém o stack trace adequado onde o erro foi lançado (apenas disponível no V8)
         if (Error.captureStackTrace) {
             Error.captureStackTrace(this, BatchValidationError);
         }
@@ -32,10 +27,10 @@ class ModuleIntegrator {
             this.logger.info(`Validating customer ${customerId} for company ${companyId}`);
             const response = await axios_1.default.get(`${this.endpoints.crm}/api/customers/${customerId}/validate`, {
                 headers: {
-                    'X-Company-Id': companyId,
+                    [headers_1.HTTP_HEADERS.COMPANY_ID]: companyId,
                     'Content-Type': 'application/json'
                 },
-                timeout: 5000
+                timeout: timeouts_1.TIMEOUT_CONFIG.INTERNAL_SERVICE
             });
             return {
                 exists: response.data.exists,
@@ -58,10 +53,10 @@ class ModuleIntegrator {
             this.logger.info(`Validating professional ${professionalId} for company ${companyId}`);
             const response = await axios_1.default.get(`${this.endpoints.services}/api/professionals/${professionalId}/validate`, {
                 headers: {
-                    'X-Company-Id': companyId,
+                    [headers_1.HTTP_HEADERS.COMPANY_ID]: companyId,
                     'Content-Type': 'application/json'
                 },
-                timeout: 5000
+                timeout: timeouts_1.TIMEOUT_CONFIG.INTERNAL_SERVICE
             });
             return {
                 exists: response.data.exists,
@@ -84,10 +79,10 @@ class ModuleIntegrator {
             this.logger.info(`Validating service ${serviceId} for company ${companyId}`);
             const response = await axios_1.default.get(`${this.endpoints.services}/api/services/${serviceId}/validate`, {
                 headers: {
-                    'X-Company-Id': companyId,
+                    [headers_1.HTTP_HEADERS.COMPANY_ID]: companyId,
                     'Content-Type': 'application/json'
                 },
-                timeout: 5000
+                timeout: timeouts_1.TIMEOUT_CONFIG.INTERNAL_SERVICE
             });
             return {
                 exists: response.data.exists,
@@ -110,10 +105,10 @@ class ModuleIntegrator {
             this.logger.info(`Validating user ${userId} for company ${companyId}`);
             const response = await axios_1.default.get(`${this.endpoints.auth}/api/users/${userId}/validate`, {
                 headers: {
-                    'X-Company-Id': companyId,
+                    [headers_1.HTTP_HEADERS.COMPANY_ID]: companyId,
                     'Content-Type': 'application/json'
                 },
-                timeout: 5000
+                timeout: timeouts_1.TIMEOUT_CONFIG.INTERNAL_SERVICE
             });
             return {
                 exists: response.data.exists,
@@ -138,17 +133,15 @@ class ModuleIntegrator {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                timeout: 5000
+                timeout: timeouts_1.TIMEOUT_CONFIG.INTERNAL_SERVICE
             });
-            // Handle both old and new response formats
             if (response.data.success !== undefined) {
-                // New format from company validation endpoint
                 return {
                     exists: response.data.success,
                     data: response.data.data
                 };
-            } else {
-                // Legacy format
+            }
+            else {
                 return {
                     exists: response.data.exists,
                     data: response.data.company
@@ -171,10 +164,10 @@ class ModuleIntegrator {
             this.logger.info(`Validating appointment ${appointmentId} for company ${companyId}`);
             const response = await axios_1.default.get(`${this.endpoints.agendamento}/api/appointments/${appointmentId}/validate`, {
                 headers: {
-                    'X-Company-Id': companyId,
+                    [headers_1.HTTP_HEADERS.COMPANY_ID]: companyId,
                     'Content-Type': 'application/json'
                 },
-                timeout: 5000
+                timeout: timeouts_1.TIMEOUT_CONFIG.INTERNAL_SERVICE
             });
             return {
                 exists: response.data.exists,
@@ -192,10 +185,6 @@ class ModuleIntegrator {
             };
         }
     }
-    /**
-     * Método auxiliar para executar uma única validação baseada no tipo
-     * Método interno para centralizar a lógica de validação
-     */
     static async executeValidation(validation) {
         switch (validation.type) {
             case 'customer':
@@ -211,77 +200,46 @@ class ModuleIntegrator {
             case 'appointment':
                 return await this.validateAppointment(validation.id, validation.companyId);
             default:
-                throw new Error(`Tipo de validação desconhecido: ${validation.type}`);
+                throw new Error(`Unknown validation type: ${validation.type}`);
         }
     }
-
-    /**
-     * Validar múltiplas referências de uma vez (validação em lote)
-     * ATÔMICO FAIL-FAST: Se qualquer validação falhar, todo o lote falha imediatamente
-     */
     static async validateBatch(validations, options = {}) {
         const { failFast = true, validateReferences = true } = options;
-        
         this.logger.info(`Batch validation for ${validations.length} references`);
-
         if (validations.length === 0) {
             return {};
         }
-
         const results = {};
-        
-        // EXECUÇÃO SEQUENCIAL COM COMPORTAMENTO FAIL-FAST
-        // Isso garante atomicidade: ou TODAS as validações passam, ou a operação falha imediatamente
         for (const validation of validations) {
             try {
                 const result = await this.executeValidation(validation);
-                
-                // Verificar se a validação falhou (referência não existe ou tem erro)
-                // Os métodos individuais de validação retornam { exists: false, error: ... } em caso de falha
                 if (validateReferences && (!result.exists || result.error)) {
-                    const errorMessage = result.error || `${validation.type} com ID '${validation.id}' não existe`;
-                    
+                    const errorMessage = result.error || `${validation.type} with ID '${validation.id}' does not exist`;
                     if (failFast) {
-                        // FAIL-FAST: Lançar imediatamente para prevenir validações subsequentes
-                        throw new BatchValidationError(
-                            `Validação em lote falhou na chave '${validation.key}': ${errorMessage}`,
-                            validation.key,
-                            result.error || new Error(`Referência não encontrada: ${validation.type}/${validation.id}`),
-                            validation.type
-                        );
-                    } else {
-                        // Modo não fail-fast: coletar o erro mas continuar
+                        throw new BatchValidationError(`Batch validation failed at key '${validation.key}': ${errorMessage}`, validation.key, result.error || new Error(`Reference not found: ${validation.type}/${validation.id}`), validation.type);
+                    }
+                    else {
                         results[validation.key] = result;
                         continue;
                     }
                 }
-                
                 results[validation.key] = result;
-                
-            } catch (error) {
-                // Lidar com erros inesperados (problemas de rede, etc.)
+            }
+            catch (error) {
                 if (failFast) {
-                    // FAIL-FAST: Encapsular erros inesperados em BatchValidationError e lançar
                     if (error instanceof BatchValidationError) {
-                        throw error; // Re-lançar nosso erro customizado
+                        throw error;
                     }
-                    
-                    throw new BatchValidationError(
-                        `Validação em lote falhou na chave '${validation.key}': ${error.message}`,
-                        validation.key,
-                        error,
-                        validation.type
-                    );
-                } else {
-                    // Modo não fail-fast: coletar o erro mas continuar
+                    throw new BatchValidationError(`Batch validation failed at key '${validation.key}': ${error.message}`, validation.key, error, validation.type);
+                }
+                else {
                     results[validation.key] = {
                         exists: false,
-                        error: error.message || 'Validação falhou'
+                        error: error.message || 'Validation failed'
                     };
                 }
             }
         }
-        
         this.logger.info(`Batch validation completed successfully: ${Object.keys(results).length} results`);
         return results;
     }
@@ -289,7 +247,7 @@ class ModuleIntegrator {
         const results = {};
         const promises = Object.entries(this.endpoints).map(async ([module, url]) => {
             try {
-                await axios_1.default.get(`${url}/health`, { timeout: 3000 });
+                await axios_1.default.get(`${url}/health`, { timeout: timeouts_1.TIMEOUT_CONFIG.HEALTH_CHECK });
                 results[module] = true;
             }
             catch (error) {

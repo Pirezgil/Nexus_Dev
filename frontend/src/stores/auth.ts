@@ -16,7 +16,8 @@ export const useAuthStore = create<AuthStore>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
-      status: 'idle',
+      status: 'initializing',
+      isInitialized: false,
 
       // Login function
       login: async (credentials: LoginRequest) => {
@@ -100,6 +101,7 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: false,
             isLoading: false,
             status: 'unauthenticated',
+            isInitialized: true,
           });
           
           console.log('✅ Logout successful');
@@ -147,7 +149,13 @@ export const useAuthStore = create<AuthStore>()(
       initialize: async () => {
         if (typeof window === 'undefined') return;
         
-        set({ status: 'loading', isLoading: true });
+        const { isInitialized } = get();
+        if (isInitialized) {
+          console.log('⚠️ Auth store already initialized, skipping...');
+          return;
+        }
+        
+        set({ status: 'loading', isLoading: true, isInitialized: false });
         console.log('🔄 Initializing auth store...');
 
         try {
@@ -173,6 +181,7 @@ export const useAuthStore = create<AuthStore>()(
               isAuthenticated: false,
               isLoading: false,
               status: 'unauthenticated',
+              isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
             });
             return;
           }
@@ -214,6 +223,7 @@ export const useAuthStore = create<AuthStore>()(
                   isAuthenticated: false,
                   isLoading: false,
                   status: 'unauthenticated',
+                  isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
                 });
                 return;
               }
@@ -230,6 +240,7 @@ export const useAuthStore = create<AuthStore>()(
                 isAuthenticated: false,
                 isLoading: false,
                 status: 'unauthenticated',
+                isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
               });
               return;
             }
@@ -246,6 +257,7 @@ export const useAuthStore = create<AuthStore>()(
               isAuthenticated: true,
               isLoading: false,
               status: 'authenticated',
+              isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
             });
             
             // Validar token em background sem bloquear UI
@@ -282,6 +294,7 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: false,
             isLoading: false,
             status: 'unauthenticated',
+            isInitialized: true,
           });
           
         } catch (error) {
@@ -297,6 +310,7 @@ export const useAuthStore = create<AuthStore>()(
             isAuthenticated: false,
             isLoading: false,
             status: 'unauthenticated',
+            isInitialized: true,
           });
         }
       },
@@ -327,6 +341,7 @@ export const useAuthStore = create<AuthStore>()(
         refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
         status: state.status,
+        isInitialized: state.isInitialized,
       }),
     }
   )

@@ -1,54 +1,54 @@
 // ERP Nexus - Home Page
-// Página inicial com redirecionamento automático
+// Página inicial com redirecionamento automático baseado na autenticação
 
 'use client';
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
 
 export default function HomePage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, initialize } = useAuthStore();
+  const { status, isAuthenticated, isInitialized } = useAuthStore();
 
-  // Inicializar autenticação na primeira renderização
+  // Redirecionar baseado no status de autenticação APENAS após inicialização completa
   useEffect(() => {
-    const initAuth = async () => {
-      await initialize();
-    };
-    initAuth();
-  }, [initialize]);
-
-  // Redirecionar baseado no status de autenticação com timeout de segurança
-  useEffect(() => {
-    // Timeout de segurança: se está carregando há mais de 8 segundos, forçar redirect para login
-    const timeout = setTimeout(() => {
-      if (isLoading) {
-        console.warn('⚠️ HomePage auth loading timeout, redirecting to login');
-        router.replace('/login');
-      }
-    }, 8000); // 8 segundos
-
-    if (!isLoading) {
-      if (isAuthenticated) {
-        console.log('✅ HomePage: User authenticated, redirecting to dashboard');
-        router.replace('/dashboard');
-      } else {
-        console.log('❌ HomePage: User not authenticated, redirecting to login');
-        router.replace('/login');
-      }
+    // Só redirecionar quando a autenticação estiver totalmente inicializada
+    if (!isInitialized) {
+      console.log('⏳ HomePage: Aguardando inicialização da autenticação...');
+      return;
     }
 
-    return () => clearTimeout(timeout);
-  }, [isAuthenticated, isLoading, router]);
+    console.log('🔍 HomePage: Status de autenticação determinado:', { 
+      status, 
+      isAuthenticated, 
+      isInitialized 
+    });
 
-  // Loading state
+    if (isAuthenticated && status === 'authenticated') {
+      console.log('✅ HomePage: Usuário autenticado, redirecionando para dashboard');
+      router.replace('/dashboard');
+    } else if (!isAuthenticated && status === 'unauthenticated') {
+      console.log('❌ HomePage: Usuário não autenticado, redirecionando para login');
+      router.replace('/login');
+    }
+  }, [status, isAuthenticated, isInitialized, router]);
+
+  // Loading state enquanto aguarda a inicialização ou redirecionamento
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-        <h1 className="text-xl font-semibold text-gray-700 mb-2">ERP Nexus</h1>
-        <p className="text-gray-500">Carregando sistema...</p>
+      <div className="text-center space-y-4">
+        <LoadingSpinner size="lg" />
+        <div className="space-y-2">
+          <h1 className="text-xl font-semibold text-gray-700">ERP Nexus</h1>
+          <p className="text-gray-500">
+            {!isInitialized 
+              ? 'Inicializando sistema...' 
+              : 'Redirecionando...'
+            }
+          </p>
+        </div>
       </div>
     </div>
   );

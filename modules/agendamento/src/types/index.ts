@@ -3,6 +3,8 @@
  * Definições de interfaces, tipos e enums usados em todo o módulo
  */
 
+import { Request } from 'express';
+
 export interface IUser {
   id: string;
   name: string;
@@ -110,6 +112,118 @@ export enum AppointmentStatus {
   RESCHEDULED = 'rescheduled'
 }
 
+// === SERVICE LAYER TYPES ===
+export interface CreateAppointmentData {
+  company_id: string;
+  customer_id: string;
+  professional_id: string;
+  service_id: string;
+  appointment_date: string;
+  appointment_time: string;
+  notes?: string;
+  send_confirmation?: boolean;
+  send_reminder?: boolean;
+  reminder_hours_before?: number;
+  created_by: string;
+}
+
+export interface UpdateAppointmentData {
+  company_id: string;
+  updated_by: string;
+  status?: AppointmentStatus;
+  appointment_time?: string;
+  appointment_date?: string;
+  notes?: string;
+  internal_notes?: string;
+  reschedule_reason?: string;
+  send_reschedule_notification?: boolean;
+}
+
+export interface AppointmentQuery {
+  company_id: string;
+  status?: AppointmentStatus;
+  customer_id?: string;
+  professional_id?: string;
+  page?: number;
+  limit?: number;
+  date_from?: string;
+  date_to?: string;
+  view?: 'day' | 'week' | 'month';
+}
+
+// === REQUEST BODY TYPES ===
+export interface CancelAppointmentBody {
+  cancellation_reason?: string;
+  send_cancellation_notification?: boolean;
+  refund_required?: boolean;
+}
+
+export interface CompleteAppointmentBody {
+  completed_at?: string;
+  completed_appointment_id?: string;
+  notes?: string;
+}
+
+export interface AddNotesBody {
+  notes: string;
+}
+
+// === SCHEDULE BLOCK TYPES ===
+export enum BlockType {
+  HOLIDAY = 'holiday',
+  VACATION = 'vacation',
+  MAINTENANCE = 'maintenance',
+  PERSONAL = 'personal',
+  BREAK = 'break',
+  LUNCH = 'lunch'
+}
+
+export interface ScheduleBlockQuery {
+  company_id: string;
+  active?: boolean;
+  professional_id?: string;
+  start_date?: string;
+  end_date?: string;
+  block_type?: BlockType;
+  page?: number;
+  limit?: number;
+}
+
+export interface CreateScheduleBlockData {
+  company_id: string;
+  created_by: string;
+  professional_id?: string;
+  start_time?: string;
+  end_time?: string;
+  start_date: string;
+  end_date?: string;
+  block_type?: BlockType;
+  title?: string;
+  description?: string;
+  is_recurring?: boolean;
+  recurrence_rule?: any;
+}
+
+// === UTILITY TYPE GUARDS ===
+export const isValidAppointmentStatus = (status: string): status is AppointmentStatus => {
+  return Object.values(AppointmentStatus).includes(status as AppointmentStatus);
+};
+
+export const isValidBlockType = (type: string): type is BlockType => {
+  return Object.values(BlockType).includes(type as BlockType);
+};
+
+// === TYPE CONVERSION HELPERS ===
+export const parseAppointmentStatus = (status?: string): AppointmentStatus | undefined => {
+  if (!status) return undefined;
+  return isValidAppointmentStatus(status) ? status : undefined;
+};
+
+export const parseBlockType = (type?: string): BlockType | undefined => {
+  if (!type) return undefined;
+  return isValidBlockType(type) ? type : undefined;
+};
+
 // === CALENDAR TYPES ===
 export interface ITimeSlot {
   start_time: string; // HH:MM
@@ -212,15 +326,6 @@ export interface ICreateScheduleBlockRequest {
   description?: string;
   is_recurring?: boolean;
   recurrence_rule?: any;
-}
-
-export enum BlockType {
-  HOLIDAY = 'holiday',
-  VACATION = 'vacation',
-  MAINTENANCE = 'maintenance',
-  PERSONAL = 'personal',
-  BREAK = 'break',
-  LUNCH = 'lunch'
 }
 
 // === NOTIFICATION TYPES ===

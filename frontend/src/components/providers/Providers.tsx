@@ -9,6 +9,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { ToastContainer } from '@/components/ui/toast';
 import { useUIStore } from '@/stores/ui';
 import { queryClient } from '@/lib/query-client';
+import { AuthProvider } from './AuthProvider';
 
 interface ProvidersProps {
   children: React.ReactNode;
@@ -43,9 +44,11 @@ const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 export const Providers: React.FC<ProvidersProps> = ({ children }) => {
   return (
     <QueryProvider>
-      <ToastProvider>
-        {children}
-      </ToastProvider>
+      <AuthProvider>
+        <ToastProvider>
+          {children}
+        </ToastProvider>
+      </AuthProvider>
     </QueryProvider>
   );
 };

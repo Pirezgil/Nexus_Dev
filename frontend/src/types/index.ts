@@ -358,7 +358,8 @@ export interface AuthStore {
   refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  status: 'idle' | 'loading' | 'authenticated' | 'unauthenticated';
+  status: 'initializing' | 'loading' | 'authenticated' | 'unauthenticated';
+  isInitialized: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => void;
   refreshAuth: () => Promise<void>;

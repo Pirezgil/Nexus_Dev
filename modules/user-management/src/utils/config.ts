@@ -8,7 +8,7 @@ dotenv.config();
  * Application configuration
  */
 export const config: Config = {
-  port: parseInt(process.env.PORT || '5000', 10),
+  port: parseInt(process.env.PORT || '5001', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   databaseUrl: process.env.DATABASE_URL || '',
   redisUrl: process.env.REDIS_URL || 'redis://localhost:6379',

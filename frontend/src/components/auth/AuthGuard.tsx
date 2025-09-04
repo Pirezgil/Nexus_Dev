@@ -1,5 +1,5 @@
-// ERP Nexus - AuthGuard Component
-// Centraliza a lógica de proteção de rotas e gerencia estados de loading/autenticação
+// ERP Nexus - AuthGuard Component (Refatorado)
+// Protege rotas sem duplicar lógica de inicialização
 
 'use client';
 
@@ -13,57 +13,79 @@ interface AuthGuardProps {
 }
 
 export default function AuthGuard({ children }: AuthGuardProps) {
-  const { status, initialize } = useAuthStore();
+  const { status, isAuthenticated, isInitialized } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
 
-  // Inicializar verificação de autenticação na primeira renderização
+  // Redirecionar para login quando não autenticado (após inicialização)
   useEffect(() => {
-    if (status === 'idle') {
-      console.log('🔄 AuthGuard: Initializing authentication...');
-      initialize();
-    }
-  }, [status, initialize]);
-
-  // Redirecionar para login quando não autenticado
-  useEffect(() => {
-    console.log('🔍 AuthGuard status check:', { status, pathname });
+    // Só agir após a inicialização estar completa
+    if (!isInitialized) return;
     
-    // Se a verificação terminou e o usuário não está autenticado, redireciona para login
-    if (status === 'unauthenticated' && pathname !== '/login') {
-      console.log('❌ AuthGuard: User not authenticated, redirecting to login');
-      router.push('/login');
+    console.log('🛡️ AuthGuard status check:', { 
+      pathname,
+      status, 
+      isAuthenticated, 
+      isInitialized 
+    });
+    
+    // Páginas que não requerem autenticação
+    const publicRoutes = ['/login'];
+    
+    if (!isAuthenticated && status === 'unauthenticated') {
+      if (!publicRoutes.includes(pathname)) {
+        console.log('❌ AuthGuard: Usuário não autenticado, redirecionando para login');
+        router.push('/login');
+        return;
+      }
     }
-  }, [status, router, pathname]);
 
-  // Mostrar loader enquanto verifica a autenticação
-  if (status === 'idle' || status === 'loading') {
-    console.log('⏳ AuthGuard: Showing loading state');
+    // Se autenticado e tentando acessar páginas de login
+    if (isAuthenticated && status === 'authenticated' && publicRoutes.includes(pathname)) {
+      console.log('✅ AuthGuard: Usuário autenticado tentando acessar login, redirecionando para dashboard');
+      router.push('/dashboard');
+      return;
+    }
+  }, [status, isAuthenticated, isInitialized, router, pathname]);
+
+  // Aguardar inicialização (AuthProvider já cuida disso, mas garantia extra)
+  if (!isInitialized || status === 'loading') {
+    console.log('⏳ AuthGuard: Aguardando inicialização...');
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
         <div className="text-center space-y-4">
           <LoadingSpinner size="lg" />
           <p className="text-slate-600 dark:text-slate-400 text-sm">
-            Verificando autenticação...
+            Verificando permissões...
           </p>
         </div>
       </div>
     );
   }
 
-  // Se autenticado, renderizar a página
-  if (status === 'authenticated') {
-    console.log('✅ AuthGuard: User authenticated, rendering protected content');
+  // Páginas públicas - renderizar sempre
+  const publicRoutes = ['/login'];
+  if (publicRoutes.includes(pathname)) {
+    console.log('🌐 AuthGuard: Renderizando página pública');
     return <>{children}</>;
   }
 
-  // Se não autenticado e está na página de login, permitir renderização
-  if (status === 'unauthenticated' && pathname === '/login') {
-    console.log('📝 AuthGuard: Rendering login page');
+  // Páginas protegidas - só renderizar se autenticado
+  if (status === 'authenticated' && isAuthenticated) {
+    console.log('✅ AuthGuard: Renderizando conteúdo protegido');
     return <>{children}</>;
   }
 
-  // Fallback: não renderizar nada (redirecionamento deve ter acontecido)
-  console.log('🚫 AuthGuard: Blocking render - invalid state');
-  return null;
+  // Estado intermediário - aguardar redirecionamento
+  console.log('⏳ AuthGuard: Aguardando redirecionamento...');
+  return (
+    <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
+      <div className="text-center space-y-4">
+        <LoadingSpinner size="lg" />
+        <p className="text-slate-600 dark:text-slate-400 text-sm">
+          Redirecionando...
+        </p>
+      </div>
+    </div>
+  );
 }

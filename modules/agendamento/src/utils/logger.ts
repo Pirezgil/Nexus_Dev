@@ -389,10 +389,5 @@ if (config.logging.fileEnabled && !config.isTest) {
 
 export default logger;
 export {
-  logger,
-  appointmentLogger,
-  notificationLogger,
-  integrationLogger,
-  auditLogger,
-  performanceLogger
+  logger
 };

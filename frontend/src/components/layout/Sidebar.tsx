@@ -21,7 +21,8 @@ import {
   UserCog,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Database
 } from 'lucide-react';
 
 import { cn } from '@/utils';
@@ -90,6 +91,13 @@ const menuItems: SidebarItem[] = [
         label: 'Empresa',
         icon: Building2,
         href: '/settings/company',
+      },
+      {
+        key: 'crm-config',
+        label: 'Configurar CRM',
+        icon: Database,
+        href: '/settings/crm',
+        permissions: ['manage_crm_settings'],
       },
     ],
   },

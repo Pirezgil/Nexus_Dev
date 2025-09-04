@@ -1,3 +1,9 @@
+export declare class BatchValidationError extends Error {
+    failedValidationKey: string;
+    originalError: any;
+    failedValidationType: string;
+    constructor(message: string, failedValidationKey: string, originalError: any, failedValidationType: string);
+}
 export interface ValidationResult {
     exists: boolean;
     error?: string;
@@ -18,12 +24,16 @@ export declare class ModuleIntegrator {
     static validateUser(userId: string, companyId: string): Promise<ValidationResult>;
     static validateCompany(companyId: string): Promise<ValidationResult>;
     static validateAppointment(appointmentId: string, companyId: string): Promise<ValidationResult>;
+    private static executeValidation;
     static validateBatch(validations: {
         type: 'customer' | 'professional' | 'service' | 'user' | 'company' | 'appointment';
         id: string;
         companyId: string;
         key: string;
-    }[]): Promise<{
+    }[], options?: {
+        failFast?: boolean;
+        validateReferences?: boolean;
+    }): Promise<{
         [key: string]: ValidationResult;
     }>;
     static healthCheck(): Promise<{

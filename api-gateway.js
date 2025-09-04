@@ -136,14 +136,14 @@ app.post('/api/auth/avatar', async (req, res) => {
   }
 });
 
-// Protected routes - Agendamento
+// Protected routes - Agendamento (porta 5007)
 app.get('/api/agendamento/calendar', (req, res) => {
-  const url = `http://localhost:5002/api/agendamento/calendar${req.url.includes('?') ? req.url.split('?')[1] : ''}`;
+  const url = `http://localhost:5007/api/agendamento/calendar${req.url.includes('?') ? req.url.split('?')[1] : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/agendamento/schedule-blocks', (req, res) => {
-  const url = `http://localhost:5002/api/agendamento/schedule-blocks${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
+  const url = `http://localhost:5007/api/agendamento/schedule-blocks${req.url.includes('?') ? '?' + req.url.split('?')[1] : ''}`;
   proxyRequest(url, req, res, true);
 });
 
@@ -151,191 +151,193 @@ app.get('/api/agendamento/schedule-blocks', (req, res) => {
 // CRM MODULE ROUTES (CRUD COMPLETO)
 // ================================
 
+// CORREÇÃO: CRM módulo está na porta 5002 conforme setup-guide.md
 // Customers CRUD
 app.get('/api/crm/customers', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5004/api/customers${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5002/api/customers${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/crm/customers/:id', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}`, req, res, true);
 });
 
 app.post('/api/crm/customers', (req, res) => {
-  proxyRequest('http://localhost:5004/api/customers', req, res, true);
+  proxyRequest('http://localhost:5002/api/customers', req, res, true);
 });
 
 app.put('/api/crm/customers/:id', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}`, req, res, true);
 });
 
 app.delete('/api/crm/customers/:id', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}`, req, res, true);
 });
 
 // Customer Interactions
 app.get('/api/crm/customers/:id/interactions', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5004/api/customers/${req.params.id}/interactions${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5002/api/customers/${req.params.id}/interactions${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.post('/api/crm/customers/:id/interactions', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/interactions`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/interactions`, req, res, true);
 });
 
 // Customer Notes
 app.get('/api/crm/customers/:id/notes', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/notes`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/notes`, req, res, true);
 });
 
 app.post('/api/crm/customers/:id/notes', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/notes`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/notes`, req, res, true);
 });
 
 // Customer Segments
 app.get('/api/crm/segments', (req, res) => {
-  proxyRequest('http://localhost:5004/api/segments', req, res, true);
+  proxyRequest('http://localhost:5002/api/segments', req, res, true);
 });
 
 app.post('/api/crm/segments', (req, res) => {
-  proxyRequest('http://localhost:5004/api/segments', req, res, true);
+  proxyRequest('http://localhost:5002/api/segments', req, res, true);
 });
 
 // CRM Stats
 app.get('/api/crm/stats', (req, res) => {
-  proxyRequest('http://localhost:5004/api/stats', req, res, true);
+  proxyRequest('http://localhost:5002/api/stats', req, res, true);
 });
 
 // ================================
 // SERVICES MODULE ROUTES (CRUD COMPLETO)
 // ================================
 
+// CORREÇÃO: Services módulo está na porta 5003 conforme setup-guide.md
 // Services CRUD
 app.get('/api/services', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5005/api/services${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5003/api/services${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/services/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/services/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/services/${req.params.id}`, req, res, true);
 });
 
 app.post('/api/services', (req, res) => {
-  proxyRequest('http://localhost:5005/api/services', req, res, true);
+  proxyRequest('http://localhost:5003/api/services', req, res, true);
 });
 
 app.put('/api/services/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/services/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/services/${req.params.id}`, req, res, true);
 });
 
 app.delete('/api/services/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/services/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/services/${req.params.id}`, req, res, true);
 });
 
-// Professionals CRUD
+// Professionals CRUD - porta 5003
 app.get('/api/services/professionals', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5005/api/professionals${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5003/api/professionals${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/services/professionals/list', (req, res) => {
-  proxyRequest('http://localhost:5005/api/professionals/list', req, res, true);
+  proxyRequest('http://localhost:5003/api/professionals/list', req, res, true);
 });
 
 app.get('/api/services/professionals/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/professionals/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/professionals/${req.params.id}`, req, res, true);
 });
 
 app.post('/api/services/professionals', (req, res) => {
-  proxyRequest('http://localhost:5005/api/professionals', req, res, true);
+  proxyRequest('http://localhost:5003/api/professionals', req, res, true);
 });
 
 app.put('/api/services/professionals/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/professionals/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/professionals/${req.params.id}`, req, res, true);
 });
 
 app.delete('/api/services/professionals/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/professionals/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/professionals/${req.params.id}`, req, res, true);
 });
 
 // Professional Services (relacionamento)
 app.get('/api/services/professionals/:id/services', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/professionals/${req.params.id}/services`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/professionals/${req.params.id}/services`, req, res, true);
 });
 
 app.put('/api/services/professionals/:id/services', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/professionals/${req.params.id}/services`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/professionals/${req.params.id}/services`, req, res, true);
 });
 
-// Appointments Completed CRUD
+// Appointments Completed CRUD - porta 5003
 app.get('/api/services/appointments/completed', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5005/api/appointments/completed${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5003/api/appointments/completed${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/services/appointments/completed/:id', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/appointments/completed/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/appointments/completed/${req.params.id}`, req, res, true);
 });
 
 app.post('/api/services/appointments/complete', (req, res) => {
-  proxyRequest('http://localhost:5005/api/appointments/complete', req, res, true);
+  proxyRequest('http://localhost:5003/api/appointments/complete', req, res, true);
 });
 
 // Photo uploads for appointments
 app.post('/api/services/appointments/:id/photos', (req, res) => {
-  proxyRequest(`http://localhost:5005/api/appointments/${req.params.id}/photos`, req, res, true);
+  proxyRequest(`http://localhost:5003/api/appointments/${req.params.id}/photos`, req, res, true);
 });
 
 // Reports
 app.get('/api/services/reports/daily', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5005/api/reports/daily${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5003/api/reports/daily${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/services/reports/professional/:id', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5005/api/reports/professional/${req.params.id}${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5003/api/reports/professional/${req.params.id}${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 // ================================
-// AGENDAMENTO MODULE ROUTES (já existentes + expandidas)
+// AGENDAMENTO MODULE ROUTES - porta 5007 conforme setup-guide.md
 // ================================
 
 app.get('/api/agendamento/calendar', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5002/api/agendamento/calendar${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5007/api/agendamento/calendar${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.get('/api/agendamento/schedule-blocks', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5002/api/agendamento/schedule-blocks${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5007/api/agendamento/schedule-blocks${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.post('/api/agendamento/appointments', (req, res) => {
-  proxyRequest('http://localhost:5002/api/agendamento/appointments', req, res, true);
+  proxyRequest('http://localhost:5007/api/agendamento/appointments', req, res, true);
 });
 
 app.get('/api/agendamento/appointments', (req, res) => {
   const queryString = req.url.split('?')[1] || '';
-  const url = `http://localhost:5002/api/agendamento/appointments${queryString ? '?' + queryString : ''}`;
+  const url = `http://localhost:5007/api/agendamento/appointments${queryString ? '?' + queryString : ''}`;
   proxyRequest(url, req, res, true);
 });
 
 app.put('/api/agendamento/appointments/:id', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/agendamento/appointments/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5007/api/agendamento/appointments/${req.params.id}`, req, res, true);
 });
 
 app.delete('/api/agendamento/appointments/:id', (req, res) => {
-  proxyRequest(`http://localhost:5002/api/agendamento/appointments/${req.params.id}`, req, res, true);
+  proxyRequest(`http://localhost:5007/api/agendamento/appointments/${req.params.id}`, req, res, true);
 });
 
 // ================================
@@ -344,12 +346,12 @@ app.delete('/api/agendamento/appointments/:id', (req, res) => {
 
 // CRM data for other modules
 app.get('/api/crm/customers/:id/basic', (req, res) => {
-  proxyRequest(`http://localhost:5004/api/customers/${req.params.id}/basic`, req, res, true);
+  proxyRequest(`http://localhost:5002/api/customers/${req.params.id}/basic`, req, res, true);
 });
 
 // Services data for other modules
 app.get('/api/services/list', (req, res) => {
-  proxyRequest('http://localhost:5005/api/services/list', req, res, true);
+  proxyRequest('http://localhost:5003/api/services/list', req, res, true);
 });
 
 // Catch-all for other routes
