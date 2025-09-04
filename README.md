@@ -49,20 +49,20 @@ npm run dev
 
 **URLs de desenvolvimento:**
 - Frontend: http://localhost:3000
-- User Management: http://localhost:5001
-- CRM: http://localhost:5002
-- Services: http://localhost:5003
-- Agendamento: http://localhost:5007
+- User Management: http://localhost:5003
+- CRM: http://localhost:5004
+- Services: http://localhost:5005
+- Agendamento: http://localhost:5008
 
 ## 📖 Documentação
 
 ### **📚 Documentação Completa:** [`/docs`](docs/)
 
-### **🗄️ Database Schema:** ✅ **24 tabelas implementadas**
-- **[Schema Completo](docs/DATABASE_SCHEMA_FINAL.md)** - Estrutura validada e pronta
-- **4 schemas**: nexus_auth, nexus_crm, nexus_agendamento, nexus_services
-- **30 relacionamentos** cross-module configurados
-- **45+ índices** para performance otimizada
+### **🗄️ Database Schema:** ✅ **Estrutura Multi-Schema Implementada**
+- **5 schemas**: nexus_auth, nexus_crm, nexus_services, nexus_agendamento, nexus_shared
+- **Isolamento multi-tenant** com schema por empresa
+- **Cross-module APIs** para integração entre módulos
+- **Auditoria completa** no schema nexus_shared
 
 **Quick Links:**
 - 🎯 [Visão Geral do MVP](docs/00-overview/mvp-overview.md)
@@ -73,35 +73,74 @@ npm run dev
 
 ## 🏗️ Arquitetura
 
-### **Stack Tecnológica**
+### **Stack Tecnológica MVP**
 - **Frontend:** React + Next.js + Tailwind CSS + TypeScript
-- **Backend:** Node.js + Express + TypeScript + Prisma
-- **Database:** PostgreSQL (multi-schema para isolamento)
-- **Cache:** Redis (sessões + pub/sub)
-- **Deploy:** Docker Swarm + Nginx
-- **Monitor:** IA personalizada + Telegram
+- **Backend:** Node.js + Express + TypeScript + Prisma ORM
+- **Database:** PostgreSQL 14+ (multi-schema para isolamento total)
+- **Cache/Sessions:** Redis 6+ (sessões + pub/sub para notificações)
+- **Containerização:** Docker + Docker Compose
+- **Deploy:** Docker Swarm (prod) + Nginx reverse proxy
+- **Monitoring:** Logs estruturados + health checks
 
 ### **Módulos MVP**
 | Módulo | Porta | Responsabilidade | Status |
 |:-------|:-----:|:-----------------|:------:|
-| [**User Management**](docs/02-modules/user-management.md) | 5001 | Autenticação multi-tenant | 📋 Planejado |
-| [**CRM**](docs/02-modules/crm.md) | 5002 | Gestão de clientes | 📋 Planejado |
-| [**Services**](docs/02-modules/services.md) | 5003 | Serviços e atendimentos | 📋 Planejado |
-| [**Agendamento**](docs/02-modules/agendamento.md) | 5007 | Calendário e notificações | 📋 Planejado |
+| [**User Management**](docs/02-modules/user-management.md) | 5003 | Autenticação multi-tenant | 📋 Planejado |
+| [**CRM**](docs/02-modules/crm.md) | 5004 | Gestão de clientes | 📋 Planejado |
+| [**Services**](docs/02-modules/services.md) | 5005 | Serviços, profissionais e atendimentos | 📋 Planejado |
+| [**Agendamento**](docs/02-modules/agendamento.md) | 5008 | Calendário e notificações | 📋 Planejado |
 
-### **Arquitetura Multi-Tenant**
+### **Arquitetura Multi-Tenant Avançada**
+
+#### **Isolamento por Schema:**
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Empresa A     │    │   Empresa B     │    │   Empresa C     │
-│ Schema: nexus_A │    │ Schema: nexus_B │    │ Schema: nexus_C │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────────┐
-                    │  PostgreSQL Server  │
-                    │   Isolation Total   │
-                    └─────────────────────┘
+┌─────────────────────┐    ┌─────────────────────┐    ┌─────────────────────┐
+│    Empresa A        │    │    Empresa B        │    │    Empresa C        │
+│ nexus_company_uuid1 │    │ nexus_company_uuid2 │    │ nexus_company_uuid3 │
+│ ├─ users            │    │ ├─ users            │    │ ├─ users            │
+│ ├─ custom_roles     │    │ ├─ custom_roles     │    │ ├─ custom_roles     │
+│ ├─ audit_trail      │    │ ├─ audit_trail      │    │ ├─ audit_trail      │
+│ └─ role_permissions │    │ └─ role_permissions │    │ └─ role_permissions │
+└─────────────────────┘    └─────────────────────┘    └─────────────────────┘
+         │                           │                           │
+         └───────────────────────────┼───────────────────────────┘
+                                     │
+                        ┌─────────────────────┐
+                        │   nexus_global      │
+                        │ ├─ companies        │
+                        │ └─ module_access    │
+                        └─────────────────────┘
+                                     │
+                        ┌─────────────────────┐
+                        │  PostgreSQL Server  │
+                        │  Schema Isolation   │
+                        └─────────────────────┘
+```
+
+#### **Schemas do Sistema:**
+- **`nexus_global`** - Gestão de empresas (apenas dev Nexus)
+- **`nexus_company_[id]`** - Dados isolados por empresa
+- **`nexus_shared`** - Logs e auditoria cross-company
+
+### **Fluxos Operacionais MVP**
+
+#### **📞 Fluxo: Cliente Liga para Agendar**
+```
+1. Login (User Management) → Valida empresa
+2. Busca cliente (CRM) → Histórico completo
+3. Seleciona serviço (Services) → Preço + duração
+4. Escolhe profissional (Services) → Especialista disponível
+5. Cria agendamento (Agendamento) → Anti-conflito
+6. WhatsApp automático → Confirmação enviada
+```
+
+#### **🏎️ Fluxo: Cliente Chega para Atendimento**
+```
+1. Profissional acessa agenda (Agendamento)
+2. Vê ficha completa (CRM) → Histórico procedimentos
+3. Registra atendimento (Services) → Fotos + observações
+4. Processa pagamento (Services) → Dinheiro/Cartão/PIX
+5. Agenda próxima sessão (Agendamento)
 ```
 
 ## 🎯 Roadmap de 12 Semanas
@@ -122,9 +161,12 @@ npm run dev
 - Integração com Auth
 
 ### **📋 Fase 3: Services (Semanas 5-6)**
-- Gestão serviços e profissionais
-- Registro de atendimentos
-- Upload de fotos + pagamentos
+- **CRUD Serviços:** Procedimentos, duração, preços
+- **CRUD Profissionais:** Equipe, especialidades, agenda
+- **Registro de Atendimentos:** Histórico completo por cliente
+- **Controle Financeiro:** Pagamentos, faturamento diário
+- **Upload de Fotos:** Antes/depois dos procedimentos
+- **Relatórios:** Performance por profissional
 
 ### **📋 Fase 4: Agendamento (Semanas 7-8)**
 - Calendário visual
@@ -167,8 +209,10 @@ npm run dev
 ```bash
 # Desenvolvimento
 npm run dev              # Inicia todos os módulos
-npm run dev:user         # Apenas User Management
-npm run dev:crm          # Apenas CRM
+npm run dev:user         # Apenas User Management (porta 5003)
+npm run dev:crm          # Apenas CRM (porta 5004)
+npm run dev:services     # Apenas Services (porta 5005)
+npm run dev:agendamento  # Apenas Agendamento (porta 5008)
 
 # Testes
 npm run test             # Todos os testes
@@ -189,11 +233,14 @@ npm run docker:logs      # Ver logs
 
 ## 📊 Status do Projeto
 
-### **Métricas Atuais**
-- 📖 **Documentação:** 100% completa
-- 🏗️ **Arquitetura:** 100% definida
-- 👨‍💻 **Desenvolvimento:** 0% (pronto para iniciar)
-- 🧪 **Testes:** 0% (estratégia definida)
+### **Status Atual do Projeto**
+- 📖 **Documentação:** ✅ 100% completa
+- 🏗️ **Arquitetura:** ✅ 100% definida  
+- 👨‍💻 **Development Setup:** 🔄 0% (em andamento)
+- 🔐 **User Management:** 📋 0% (planejado)
+- 👥 **CRM Module:** 📋 0% (planejado)
+- 🔧 **Services Module:** 📋 0% (planejado)
+- 📅 **Agendamento Module:** 📋 0% (planejado)
 
 ### **Métricas MVP (Metas)**
 - 🎯 **10 empresas** usando ativamente
