@@ -5,10 +5,10 @@
 
 import { Request, Response } from 'express';
 import { appointmentService } from '../services/appointmentService';
-import { Logger } from '../utils/logger';
-import { HTTP_HEADERS, getHeaderKey } from '../../../../../shared/constants/headers';
+import { logger } from '../utils/logger';
+// import { HTTP_HEADERS, getHeaderKey } from '../../../../../shared/constants/headers'; // TEMPORARIAMENTE DESABILITADO
 
-const logger = new Logger('ValidationController');
+const moduleLogger = logger.child({ module: 'ValidationController' });
 
 export class ValidationController {
   

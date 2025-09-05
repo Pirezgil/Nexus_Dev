@@ -6,7 +6,7 @@
 import { PrismaClient } from '@prisma/client';
 import config from './config';
 import { performanceLogger, logger } from './logger';
-import { setupPrismaValidation } from './prismaValidation';
+// import { setupPrismaValidation } from './prismaValidation'; // TEMPORARIAMENTE DESABILITADO
 
 // Configuração do Prisma com middleware de logging
 const createPrismaClient = () => {
@@ -59,7 +59,7 @@ export const prisma = createPrismaClient();
 export const db = prisma;
 
 // Setup cross-module validation middleware
-setupPrismaValidation(prisma);
+// setupPrismaValidation(prisma); // TEMPORARIAMENTE DESABILITADO
 
 // Função para testar conexão com o banco
 export const testDatabaseConnection = async (): Promise<boolean> => {

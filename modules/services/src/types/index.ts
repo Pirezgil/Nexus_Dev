@@ -317,7 +317,7 @@ export interface UserProfile {
 // } from '/app/shared/validation/service-schemas';
 
 // Temporary inline schemas for development
-import { z } from 'zod';
+// import { z } from 'zod'; // REMOVIDO - já importado no topo
 
 export const ServiceCreateSchema = z.object({
   companyId: z.string().uuid(),

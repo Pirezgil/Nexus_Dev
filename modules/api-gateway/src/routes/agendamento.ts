@@ -63,7 +63,7 @@ const agendamentoProxy = createProxyMiddleware({
   target: AGENDAMENTO_SERVICE_URL,
   changeOrigin: true,
   pathRewrite: {
-    '^/api/agendamento': '/api/agendamento'
+    '^/api/agendamento': '' // CORREÇÃO CRÍTICA: Remove duplicação de prefixo
   },
   timeout: parseInt(process.env.TIMEOUT_GATEWAY_AGENDAMENTO || '60000', 10), // Configurable timeout for scheduling operations
   

@@ -178,8 +178,8 @@ class App {
     // API routes with prefix
     this.app.use('/api', routes);
     
-    // Alternative root route for API endpoints
-    this.app.use(routes);
+    // REMOVIDO: Alternative root route (causava conflitos)
+    // this.app.use(routes);
   }
 
   private initializeErrorHandling(): void {

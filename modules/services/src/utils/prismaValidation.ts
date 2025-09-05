@@ -4,7 +4,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaValidationHooks } from '../../shared/middleware/prismaValidationHooks';
+// import { PrismaValidationHooks } from '../../shared/middleware/prismaValidationHooks'; // TEMPORARIAMENTE DESABILITADO
 import { createServiceLogger } from './logger';
 
 const logger = createServiceLogger('PrismaValidation');

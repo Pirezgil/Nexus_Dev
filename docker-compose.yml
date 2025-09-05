@@ -36,8 +36,9 @@ services:
     image: redis:7-alpine
     container_name: nexus-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    # ✅ Redis apenas para comunicação interna - sem exposição externa por segurança
+    expose:
+      - "6379"
     volumes:
       - redis_data:/data
     networks:
@@ -268,7 +269,7 @@ services:
     networks:
       - nexus-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80", "||", "exit", "1"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:80/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -280,9 +281,9 @@ services:
     working_dir: /app
     command: sh -c "npm install && npm run build && npm start"
     restart: unless-stopped
-    # REMOÇÃO: API Gateway agora é apenas interno - acesso via Nginx
-    expose:
-      - "5001"  # ✅ Porta interna apenas - sem exposição externa
+    # ✅ API Gateway deve ser exposto externamente para comunicação com frontend
+    ports:
+      - "5001:5001"  # ✅ Porta externa e interna consistentes
     environment:
       - NODE_ENV=development
       - PORT=5001
@@ -318,7 +319,7 @@ services:
       - ./modules/api-gateway/logs:/app/logs
       - ./shared:/app/shared
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:5001/health || exit 1"]
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://127.0.0.1:5001/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

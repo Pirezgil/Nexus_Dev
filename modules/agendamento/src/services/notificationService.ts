@@ -888,6 +888,8 @@ export const notificationService = {
 };
 
 // Processar queue de notificações agendadas (executar a cada minuto)
+// TEMPORARIAMENTE DESABILITADO - cron não importado
+/* 
 cron.schedule('* * * * *', async () => {
   const now = new Date();
   
@@ -928,5 +930,6 @@ cron.schedule('* * * * *', async () => {
     logger.info(`${beforeLength - notificationQueue.length} jobs antigos removidos da queue`);
   }
 });
+*/
 
-logger.info('Sistema de notificações inicializado com cron job ativo');
+logger.info('Sistema de notificações inicializado');

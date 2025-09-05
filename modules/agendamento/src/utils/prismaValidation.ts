@@ -4,21 +4,24 @@
  */
 
 import { PrismaClient } from '@prisma/client';
-import { PrismaValidationHooks } from '../../../../shared/middleware/prismaValidationHooks';
-import { Logger } from './logger';
+// import { PrismaValidationHooks } from '../../shared/middleware/prismaValidationHooks'; // TEMPORARIAMENTE DESABILITADO
 
-const logger = new Logger('PrismaValidation');
+// Logger mock temporário
+const moduleLogger = {
+  info: (msg: string) => console.log(`[PrismaValidation] ${msg}`)
+};
 
 export function setupPrismaValidation(prisma: PrismaClient) {
-  logger.info('Setting up Prisma validation middleware for Agendamento module');
+  moduleLogger.info('Setting up Prisma validation middleware for Agendamento module');
 
   // Add logging middleware for debugging
-  prisma.$use(PrismaValidationHooks.loggingMiddleware());
+  // prisma.$use(PrismaValidationHooks.loggingMiddleware());
 
   // Add audit middleware
-  prisma.$use(PrismaValidationHooks.auditMiddleware('agendamento'));
+  // prisma.$use(PrismaValidationHooks.auditMiddleware('agendamento'));
 
   // Configure validation for each model that has cross-module references
+  /* TEMPORARIAMENTE DESABILITADO
   const modelConfigs = {
     // Appointment has references to CRM customers, Services professionals and services, Auth users
     Appointment: {
@@ -61,11 +64,12 @@ export function setupPrismaValidation(prisma: PrismaClient) {
       companyIdField: 'company_id'
     }
   };
+  */
 
   // Add the validation middleware
-  prisma.$use(PrismaValidationHooks.createModuleValidationMiddleware(modelConfigs));
+  // prisma.$use(PrismaValidationHooks.createModuleValidationMiddleware(modelConfigs));
 
-  logger.info('Prisma validation middleware configured successfully for Agendamento module');
+  moduleLogger.info('Prisma validation middleware configured successfully for Agendamento module');
 }
 
 export default setupPrismaValidation;

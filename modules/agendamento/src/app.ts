@@ -140,9 +140,9 @@ class App {
       });
     });
 
-    // API routes com prefixo correto para integração com API Gateway
+    // API routes padronizados (sem prefixo interno - pathRewrite remove no Gateway)
     console.log('🚨 DEBUG: About to register routes:', typeof routes);
-    this.app.use('/api/agendamento', routes);
+    this.app.use('/', routes); // PADRÃO: sem prefixo interno
     console.log('🚨 DEBUG: Routes registered successfully');
   }
 
