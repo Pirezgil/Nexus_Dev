@@ -23,19 +23,49 @@ export class CustomerController {
    * Get paginated list of customers with filters
    */
   getCustomers = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const companyId = req.user!.companyId;
-    const filters = req.query as unknown as CustomerSearchInput;
-    const pagination = req.query as unknown as PaginationInput;
+    console.log(`[${new Date().toISOString()}] GET /customers - Starting`);
+    
+    try {
+      const companyId = req.user!.companyId;
+      console.log('Company ID:', companyId);
+      
+      // Provide default values to prevent validation errors
+      const filters = {
+        search: req.query.search as string || '',
+        status: req.query.status ? (Array.isArray(req.query.status) ? req.query.status : [req.query.status]) : [],
+        tags: req.query.tags ? (Array.isArray(req.query.tags) ? req.query.tags : [req.query.tags]) : [],
+        city: req.query.city as string || '',
+        state: req.query.state as string || '',
+        hasEmail: req.query.hasEmail === 'true' ? true : req.query.hasEmail === 'false' ? false : undefined,
+        hasPhone: req.query.hasPhone === 'true' ? true : req.query.hasPhone === 'false' ? false : undefined,
+        createdFrom: req.query.createdFrom ? new Date(req.query.createdFrom as string) : undefined,
+        createdTo: req.query.createdTo ? new Date(req.query.createdTo as string) : undefined
+      };
+      
+      const pagination = {
+        page: parseInt(req.query.page as string) || 1,
+        limit: parseInt(req.query.limit as string) || 10,
+        sortBy: req.query.sortBy as string || 'createdAt',
+        sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc'
+      };
 
-    const result = await this.customerService.getCustomers(companyId, filters, pagination);
+      console.log('Filters:', filters);
+      console.log('Pagination:', pagination);
 
-    const response: ApiResponse = {
-      success: true,
-      data: result,
-      message: 'Clientes recuperados com sucesso',
-    };
+      const result = await this.customerService.getCustomers(companyId, filters, pagination);
 
-    res.json(response);
+      const response: ApiResponse = {
+        success: true,
+        data: result,
+        message: 'Clientes recuperados com sucesso',
+      };
+
+      console.log(`[${new Date().toISOString()}] GET /customers - Success`);
+      res.json(response);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] GET /customers - Error:`, error);
+      throw error;
+    }
   });
 
   /**
@@ -62,18 +92,30 @@ export class CustomerController {
    * Create new customer
    */
   createCustomer = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    // Temporary minimal controller for timeout diagnosis
-    const response: ApiResponse = {
-      success: true,
-      data: {
-        id: 'test-id',
-        name: req.body?.name || 'Test Customer',
-        message: 'Controller reached successfully - no timeout!'
-      },
-      message: 'Teste bem-sucedido - controller funciona!',
-    };
+    console.log(`[${new Date().toISOString()}] POST /customers - Starting`);
+    console.log('Request body:', req.body);
+    
+    try {
+      const data = req.body as CreateCustomerInput;
+      const companyId = req.user!.companyId;
+      const createdBy = req.user!.userId;
 
-    res.status(201).json(response);
+      console.log('Creating customer with:', { data, companyId, createdBy });
+
+      const customer = await this.customerService.createCustomer(data, companyId, createdBy);
+
+      const response: ApiResponse = {
+        success: true,
+        data: customer,
+        message: 'Cliente criado com sucesso',
+      };
+
+      console.log(`[${new Date().toISOString()}] POST /customers - Success, ID: ${customer.id}`);
+      res.status(201).json(response);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] POST /customers - Error:`, error);
+      throw error;
+    }
   });
 
   /**
@@ -178,17 +220,26 @@ export class CustomerController {
    * Get all customer tags for autocomplete
    */
   getCustomerTags = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const companyId = req.user!.companyId;
+    console.log(`[${new Date().toISOString()}] GET /customers/tags - Starting`);
+    
+    try {
+      const companyId = req.user!.companyId;
+      console.log('Getting tags for company:', companyId);
 
-    const tags = await this.customerService.getCustomerTags(companyId);
+      const tags = await this.customerService.getCustomerTags(companyId);
 
-    const response: ApiResponse = {
-      success: true,
-      data: tags,
-      message: 'Tags recuperadas com sucesso',
-    };
+      const response: ApiResponse = {
+        success: true,
+        data: tags,
+        message: 'Tags recuperadas com sucesso',
+      };
 
-    res.json(response);
+      console.log(`[${new Date().toISOString()}] GET /customers/tags - Success, found ${tags.length} tags`);
+      res.json(response);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] GET /customers/tags - Error:`, error);
+      throw error;
+    }
   });
 
   /**

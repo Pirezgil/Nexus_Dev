@@ -50,7 +50,7 @@ const crmProxy = createProxyMiddleware({
   target: CRM_SERVICE_URL,
   changeOrigin: true,
   pathRewrite: {
-    '^/api/crm': '/api/crm' // Maintain the API path structure
+    '^/api/crm': '/api' // Remove /crm prefix - CRM expects /api/customers not /api/crm/customers
   },
   timeout: parseInt(process.env.TIMEOUT_GATEWAY_CRM || '60000', 10), // Configurable timeout for CRM operations
   
@@ -62,6 +62,7 @@ const crmProxy = createProxyMiddleware({
     proxyReq.setHeader('X-Gateway-Request-ID', requestId);
     proxyReq.setHeader('X-Gateway-Source', 'nexus-api-gateway');
     proxyReq.setHeader('X-Gateway-Timestamp', new Date().toISOString());
+    proxyReq.setHeader('X-Gateway-Proxy', 'true'); // Critical header for CRM to detect proxy requests
     
     // Multi-tenancy headers - CRITICAL for company isolation
     if (user) {
@@ -82,6 +83,20 @@ const crmProxy = createProxyMiddleware({
     proxyReq.setHeader('X-Original-Host', req.get('Host') || 'unknown');
     proxyReq.setHeader('X-User-Agent', req.get('User-Agent') || 'unknown');
     
+    // For POST/PUT/PATCH requests, ensure proper body handling
+    if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+      // Body is already parsed by gateway, so we need to stringify it
+      if (req.body && typeof req.body === 'object') {
+        const bodyString = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Type', 'application/json');
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyString));
+        proxyReq.setHeader('X-Gateway-Body-Parsed', 'true'); // Indicate body was pre-parsed
+        
+        // Write the body to the proxy request
+        proxyReq.write(bodyString);
+      }
+    }
+    
     logger.info('CRM request proxied:', {
       requestId,
       method: req.method,
@@ -89,7 +104,9 @@ const crmProxy = createProxyMiddleware({
       companyId: user?.companyId,
       userId: user?.userId,
       target: CRM_SERVICE_URL,
-      ip: req.ip
+      ip: req.ip,
+      hasBody: !!req.body,
+      bodyParsed: !!req.body && typeof req.body === 'object'
     });
   },
 

@@ -1,0 +1,339 @@
+services:
+  # Database - PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_erp
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: nexus_password
+      POSTGRES_MULTIPLE_EXTENSIONS: uuid-ossp
+      # 🔐 HMAC Secret para comunicação segura entre serviços
+      GATEWAY_HMAC_SECRET: "99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76"
+      # ⏱️ Política Centralizada de Timeouts
+      TIMEOUT_HEALTH_CHECK: 5000
+      TIMEOUT_QUICK_OPERATIONS: 10000
+      TIMEOUT_INTERNAL_SERVICE: 25000
+      TIMEOUT_API_CLIENT: 30000
+      TIMEOUT_GATEWAY: 60000
+      TIMEOUT_EXTERNAL_API: 60000
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_user -d nexus_erp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cache & Message Broker - Redis
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: unless-stopped
+    # ⚠️ Redis exposto temporariamente para desenvolvimento local
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Management Module
+  nexus-user-management:
+    build:
+      context: ./modules/user-management
+      dockerfile: Dockerfile
+    container_name: nexus-user-management
+    restart: unless-stopped
+    ports:
+      - "5003:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - JWT_EXPIRES_IN=24h
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # CRM Module
+  nexus-crm:
+    build:
+      context: .
+      dockerfile: ./modules/crm/Dockerfile
+    container_name: nexus-crm
+    restart: unless-stopped
+    ports:
+      - "5004:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Services Module
+  nexus-services:
+    build:
+      context: .
+      dockerfile: ./modules/services/Dockerfile
+    container_name: nexus-services
+    restart: unless-stopped
+    ports:
+      - "5005:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Agendamento Module
+  # ⚠️ PROBLEMA IDENTIFICADO: TransformError no build - necessário investigar Dockerfile ou dependências
+  # Movido da porta 5002 para 5008 para resolver conflito com módulo Auth
+  nexus-agendamento:
+    build:
+      context: .
+      dockerfile: ./modules/agendamento/Dockerfile
+    container_name: nexus-agendamento
+    restart: unless-stopped
+    command: npm run dev
+    ports:
+      - "5008:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      # WhatsApp Business API Configuration
+      - WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id-here
+      - WHATSAPP_ACCESS_TOKEN=your-access-token-here
+      - WHATSAPP_API_VERSION=v18.0
+      - WHATSAPP_WEBHOOK_VERIFY_TOKEN=your-webhook-verify-token-here
+      - WHATSAPP_APP_SECRET=your-app-secret-here
+      # Redis Configuration for Message Queue
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=3
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+      nexus-services:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Application - Development with bind volumes
+  nexus-frontend:
+    image: node:18-alpine
+    container_name: nexus-frontend
+    restart: unless-stopped
+    working_dir: /app
+    command: sh -c "apk add --no-cache curl && npm install --no-audit --no-fund && npm run dev"
+    expose:
+      - "3000"          # Não expor diretamente - usar apenas via Nginx
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - NEXT_PUBLIC_GATEWAY_URL=http://localhost:5000
+      # ⏱️ Política Centralizada de Timeouts (Frontend)
+      - NEXT_PUBLIC_TIMEOUT_API_CLIENT=30000
+      - NEXT_PUBLIC_TIMEOUT_QUICK_OPERATIONS=10000
+    depends_on:
+      - api-gateway
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    networks:
+      - nexus-network
+
+  # Load Balancer/Reverse Proxy - Nginx
+  nginx:
+    image: nginx:alpine
+    container_name: nexus-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"        # HTTP - desenvolvimento
+      - "5000:80"      # Mapeamento adicional para manter compatibilidade
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      nexus-frontend:
+        condition: service_started
+      api-gateway:
+        condition: service_started
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway (Node.js) - ÚNICO PONTO DE ENTRADA EXTERNO
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./modules/api-gateway/Dockerfile
+    container_name: nexus-api-gateway
+    restart: unless-stopped
+    # ✅ API Gateway deve ser exposto externamente para comunicação com frontend
+    ports:
+      - "5001:5001"  # ✅ Porta externa e interna consistentes
+    environment:
+      - NODE_ENV=development
+      - PORT=5001
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      - AGENDAMENTO_URL=http://nexus-agendamento:3000
+      - FRONTEND_URL=http://nexus-frontend:3000
+      - CORS_ORIGINS=http://nexus-nginx,http://nexus-nginx:80,http://localhost:5000,http://localhost:80
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - LOG_LEVEL=info
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # ⏱️ Política Centralizada de Timeouts (Gateway)
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_GATEWAY_CRM=60000
+      - TIMEOUT_GATEWAY_SERVICES=60000
+      - TIMEOUT_GATEWAY_AGENDAMENTO=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    volumes:
+      - ./modules/api-gateway/logs:/app/logs
+      - ./shared:/app/shared
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://127.0.0.1:5001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  frontend_node_modules:
+    driver: local
+
+networks:
+  nexus-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

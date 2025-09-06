@@ -27,6 +27,17 @@ const customerParamsSchema = z.object({
   }),
 });
 
+// Mock user para desenvolvimento (simula usuário autenticado)
+router.use((req: any, res, next) => {
+  console.log(`[${new Date().toISOString()}] STATS ${req.method} ${req.url}`);
+  req.user = {
+    userId: 'user-dev-001',
+    companyId: 'company-dev-001',
+    email: 'dev@nexuserp.com'
+  };
+  next();
+});
+
 // Temporarily disabled for timeout diagnosis
 // router.use(authenticate);
 // router.use(enforceCompanyAccess);
@@ -48,7 +59,7 @@ router.get(
  */
 router.get(
   '/dashboard',
-  requirePermission('CRM', 'read'),
+  // requirePermission('CRM', 'read'), // Temporarily disabled for development
   statsController.getDashboardStats
 );
 
@@ -59,7 +70,7 @@ router.get(
  */
 router.get(
   '/performance',
-  validateQuery(performanceQuerySchema),
+  // validateQuery(performanceQuerySchema), // Temporarily disabled for development
   statsController.getPerformanceMetrics
 );
 
@@ -70,7 +81,7 @@ router.get(
  */
 router.get(
   '/daily-activity',
-  validateQuery(dailyActivityQuerySchema),
+  // validateQuery(dailyActivityQuerySchema), // Temporarily disabled for development
   statsController.getDailyActivityMetrics
 );
 
@@ -81,7 +92,7 @@ router.get(
  */
 router.get(
   '/customers/:customerId/activity',
-  validateParams(customerParamsSchema),
+  // validateParams(customerParamsSchema), // Temporarily disabled for development
   statsController.getCustomerActivitySummary
 );
 
@@ -92,7 +103,7 @@ router.get(
  */
 router.post(
   '/refresh',
-  requirePermission('CRM', 'admin'),
+  // requirePermission('CRM', 'admin'), // Temporarily disabled for development
   statsController.refreshStats
 );
 

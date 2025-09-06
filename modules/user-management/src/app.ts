@@ -39,14 +39,10 @@ app.use(helmet({
   },
 }));
 
-// CORS configuration
-app.use(cors({
-  origin: config.corsOrigins,
-  credentials: true,
-  optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-}));
+// CORS removido do módulo User Management - centralizado no API Gateway
+// O API Gateway já aplica as políticas CORS para requisições externas
+// Este microsserviço opera na rede interna do Docker e recebe apenas
+// requisições já filtradas pelo Gateway
 
 // Rate limiting (disabled in development)
 const isDevelopment = config.nodeEnv === 'development';

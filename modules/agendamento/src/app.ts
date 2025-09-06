@@ -42,28 +42,10 @@ class App {
       crossOriginEmbedderPolicy: false,
     }));
 
-    // CORS configuration - Allow communication with other modules
-    this.app.use(cors({
-      origin: [
-        'http://localhost:3000', // Frontend
-        'http://localhost:5001', // API Gateway
-        'http://localhost:5003', // User Management
-        'http://localhost:5004', // CRM
-        'http://localhost:5005', // Services
-      ],
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'X-Requested-With',
-        'X-Company-ID',
-        'X-User-ID',
-        'X-User-Role',
-        'X-Gateway-Request-ID',
-        'X-Gateway-Source'
-      ],
-    }));
+    // CORS removido do módulo Agendamento - centralizado no API Gateway
+    // O API Gateway já aplica as políticas CORS para requisições externas
+    // Este microsserviço opera na rede interna do Docker e recebe apenas
+    // requisições já filtradas pelo Gateway
 
     // Compression middleware
     this.app.use(compression());

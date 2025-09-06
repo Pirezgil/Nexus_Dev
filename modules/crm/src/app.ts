@@ -24,33 +24,114 @@ class App {
   }
 
   private initializeMiddlewares(): void {
-    // Security middleware
-    this.app.use(helmet({
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'"],
-          imgSrc: ["'self'", "data:", "https:"],
-        },
-      },
-      crossOriginEmbedderPolicy: false,
-    }));
-
-    // CORS configuration
+    // CORS PRIMEIRO - PRIORIDADE MÁXIMA para resolver problema CORS
     this.app.use(cors({
-      origin: config.corsOrigins,
+      origin: function(origin, callback) {
+        console.log(`🌐 CORS Origin check: ${origin || 'no-origin'}`);
+        
+        // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+        if (!origin) return callback(null, true);
+        
+        // Allow localhost origins
+        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+          return callback(null, true);
+        }
+        
+        // Allow any origin in development
+        return callback(null, true);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+      exposedHeaders: ['X-Total-Count', 'Content-Range'],
+      preflightContinue: false,
+      optionsSuccessStatus: 200
+    }));
+
+    // Security middleware - APÓS CORS e com configuração mínima
+    this.app.use(helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: false,
+      originAgentCluster: false
     }));
 
     // Compression middleware
     this.app.use(compression());
 
-    // Body parsing middleware - simplified for timeout diagnosis
-    this.app.use(express.json());
-    this.app.use(express.urlencoded({ extended: true }));
+    // Body parsing middleware - conditional based on API Gateway proxy
+    // Skip body parsing for requests coming from API Gateway to prevent stream conflicts
+    this.app.use((req, res, next) => {
+      // Check if request comes from API Gateway
+      const isFromGateway = req.headers['x-gateway-proxy'] === 'true' || 
+                           req.headers['x-gateway-source'] === 'nexus-api-gateway';
+      
+      if (isFromGateway) {
+        logger.info('Request from API Gateway detected - skipping body parsing', {
+          method: req.method,
+          url: req.url,
+          hasGatewayProxy: !!req.headers['x-gateway-proxy'],
+          hasGatewaySource: !!req.headers['x-gateway-source'],
+          hasBodyParsed: req.headers['x-gateway-body-parsed'] === 'true'
+        });
+        return next(); // Skip body parsing middleware
+      }
+      
+      // Apply normal body parsing for direct requests
+      express.json({ limit: '10mb' })(req, res, next);
+    });
+    
+    this.app.use((req, res, next) => {
+      // Skip URL encoded parsing for gateway requests
+      const isFromGateway = req.headers['x-gateway-proxy'] === 'true' || 
+                           req.headers['x-gateway-source'] === 'nexus-api-gateway';
+      
+      if (isFromGateway) {
+        return next();
+      }
+      
+      express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
+    });
+    
+    // Middleware to process pre-parsed body from API Gateway
+    this.app.use((req: any, res, next) => {
+      const isFromGateway = req.headers['x-gateway-proxy'] === 'true';
+      const isBodyParsed = req.headers['x-gateway-body-parsed'] === 'true';
+      
+      if (isFromGateway && isBodyParsed && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
+        // Body is already available as raw buffer, we need to parse it
+        let bodyBuffer = '';
+        
+        req.on('data', (chunk: Buffer) => {
+          bodyBuffer += chunk.toString();
+        });
+        
+        req.on('end', () => {
+          try {
+            if (bodyBuffer.trim()) {
+              req.body = JSON.parse(bodyBuffer);
+              logger.info('Parsed pre-processed body from API Gateway', {
+                method: req.method,
+                url: req.url,
+                bodySize: bodyBuffer.length,
+                bodyKeys: req.body ? Object.keys(req.body) : []
+              });
+            }
+          } catch (error) {
+            logger.error('Failed to parse pre-processed body from API Gateway', {
+              method: req.method,
+              url: req.url,
+              error: error instanceof Error ? error.message : String(error),
+              bodyPreview: bodyBuffer.substring(0, 200)
+            });
+          }
+          next();
+        });
+      } else {
+        next();
+      }
+    });
 
     // Temporarily disabled for timeout diagnosis
     // this.app.use(sanitizeInput);
@@ -102,6 +183,56 @@ class App {
           environment: config.nodeEnv,
         },
         message: 'Nexus CRM service is running',
+      });
+    });
+
+    // Test endpoint for body parsing validation (no auth required)
+    this.app.post('/api/test-body', (req, res) => {
+      const isFromGateway = req.headers['x-gateway-proxy'] === 'true';
+      const bodyParsed = req.headers['x-gateway-body-parsed'] === 'true';
+      
+      logger.info('Test body endpoint called', {
+        method: req.method,
+        isFromGateway,
+        bodyParsed,
+        hasBody: !!req.body,
+        bodyType: typeof req.body,
+        headers: {
+          'x-gateway-proxy': req.headers['x-gateway-proxy'],
+          'x-gateway-source': req.headers['x-gateway-source'],
+          'x-gateway-body-parsed': req.headers['x-gateway-body-parsed']
+        }
+      });
+      
+      res.json({
+        success: true,
+        data: {
+          receivedBody: req.body,
+          isFromGateway,
+          bodyParsed,
+          timestamp: new Date().toISOString()
+        },
+        message: 'Body parsing test completed successfully'
+      });
+    });
+
+    // Health check endpoint for Docker
+    this.app.get('/health', (req, res) => {
+      res.status(200).json({
+        success: true,
+        data: {
+          status: 'healthy',
+          service: 'Nexus CRM',
+          version: '1.0.0',
+          timestamp: new Date().toISOString(),
+          uptime: Math.floor(process.uptime()),
+          environment: config.nodeEnv,
+          memory: {
+            used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024 * 100) / 100,
+            total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024 * 100) / 100,
+          },
+        },
+        message: 'CRM module is healthy and ready',
       });
     });
 

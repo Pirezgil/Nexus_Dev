@@ -26,35 +26,43 @@ export function CustomerStats() {
     );
   }
 
-  if (!stats) return null;
+  if (!stats?.overview) return null;
+
+  const { overview } = stats;
 
   const statsCards = [
     {
       title: "Total de Clientes",
-      value: stats.total.toLocaleString(),
+      value: (overview.totalCustomers || 0).toLocaleString(),
       icon: Users,
       description: "Clientes cadastrados",
     },
     {
       title: "Clientes Ativos",
-      value: stats.active.toLocaleString(),
+      value: (overview.activeCustomers || 0).toLocaleString(),
       icon: UserCheck,
-      description: `${((stats.active / stats.total) * 100).toFixed(1)}% do total`,
+      description: overview.totalCustomers > 0 
+        ? `${((overview.activeCustomers / overview.totalCustomers) * 100).toFixed(1)}% do total`
+        : "0% do total",
       color: "text-green-600",
     },
     {
-      title: "Novos este Mês",
-      value: stats.newThisMonth.toLocaleString(),
+      title: "Prospects",
+      value: (overview.prospectCustomers || 0).toLocaleString(),
       icon: UserPlus,
-      description: `${stats.growth > 0 ? '+' : ''}${stats.growth.toFixed(1)}% vs mês anterior`,
-      color: stats.growth > 0 ? "text-green-600" : "text-red-600",
+      description: overview.totalCustomers > 0 
+        ? `${((overview.prospectCustomers / overview.totalCustomers) * 100).toFixed(1)}% do total`
+        : "0% do total",
+      color: "text-blue-600",
     },
     {
-      title: "Prospects",
-      value: stats.prospects.toLocaleString(),
+      title: "Interações",
+      value: (overview.totalInteractions || 0).toLocaleString(),
       icon: TrendingUp,
-      description: `${((stats.prospects / stats.total) * 100).toFixed(1)}% conversão potencial`,
-      color: "text-blue-600",
+      description: overview.totalCustomers > 0 
+        ? `${(overview.averageInteractionsPerCustomer || 0).toFixed(1)} por cliente`
+        : "0 por cliente",
+      color: "text-purple-600",
     },
   ];
 

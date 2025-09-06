@@ -81,7 +81,7 @@ export class CustomerService {
           include: {
             _count: {
               select: {
-                notes: true,
+                customerNotes: true,
                 interactions: true,
               },
             },
@@ -107,7 +107,7 @@ export class CustomerService {
         status: customer.status,
         tags: customer.tags,
         interactionsCount: customer._count.interactions,
-        notesCount: customer._count.notes,
+        notesCount: customer._count.customerNotes,
         lastInteractionAt: customer.interactions[0]?.createdAt,
         createdAt: customer.createdAt,
       }));
@@ -151,7 +151,7 @@ export class CustomerService {
       const customer = await prisma.customer.findFirst({
         where: { id: customerId, companyId },
         include: {
-          notes: {
+          customerNotes: {
             orderBy: { createdAt: 'desc' },
           },
           interactions: {
@@ -181,7 +181,7 @@ export class CustomerService {
         metadata: customer.metadata,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
-        notes: customer.notes,
+        notes: customer.customerNotes,
         interactions: customer.interactions,
       };
 
@@ -212,20 +212,32 @@ export class CustomerService {
 
       if (data.document) {
         const existingByDocument = await prisma.customer.findFirst({
-          where: { document: data.document, companyId },
+          where: { cpfCnpj: data.document, companyId },
         });
         if (existingByDocument) {
           throw new ConflictError('Cliente com este documento já existe');
         }
       }
 
-      // Simplified query to isolate timeout issue - removed include clause
+      // Map API fields to Prisma schema fields
+      const prismaData = {
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        cpfCnpj: data.document, // API 'document' -> Prisma 'cpfCnpj'
+        addressStreet: data.address, // API 'address' -> Prisma 'addressStreet'
+        addressCity: data.city,
+        addressState: data.state,
+        addressZipcode: data.zipCode, // API 'zipCode' -> Prisma 'addressZipcode'
+        status: data.status || 'ACTIVE',
+        tags: data.tags || [],
+        companyId,
+        createdBy,
+      };
+
+      // Create customer with proper field mapping
       const customer = await prisma.customer.create({
-        data: {
-          ...data,
-          companyId,
-          createdBy,
-        },
+        data: prismaData,
       });
 
       // Temporarily disabled for timeout diagnosis - potential deadlock
@@ -245,22 +257,22 @@ export class CustomerService {
       // Invalidate related caches
       await this.invalidateCustomerCaches(customer.id, companyId);
 
-      // Simplified return object - notes and interactions not available without include
+      // Return mapped object from Prisma schema to API interface
       return {
         id: customer.id,
         companyId: customer.companyId,
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        document: customer.document,
-        address: customer.address,
-        city: customer.city,
-        state: customer.state,
-        zipCode: customer.zipCode,
-        country: customer.country,
+        document: customer.cpfCnpj, // Prisma 'cpfCnpj' -> API 'document'
+        address: customer.addressStreet, // Prisma 'addressStreet' -> API 'address'
+        city: customer.addressCity,
+        state: customer.addressState,
+        zipCode: customer.addressZipcode, // Prisma 'addressZipcode' -> API 'zipCode'
+        country: null, // Not available in current schema
         status: customer.status,
         tags: customer.tags,
-        metadata: customer.metadata,
+        metadata: null, // Not available in current schema
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
         notes: [], // Empty array since include was removed
@@ -318,7 +330,7 @@ export class CustomerService {
           updatedBy,
         },
         include: {
-          notes: {
+          customerNotes: {
             orderBy: { createdAt: 'desc' },
           },
           interactions: {
@@ -361,7 +373,7 @@ export class CustomerService {
         metadata: customer.metadata,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
-        notes: customer.notes,
+        notes: customer.customerNotes,
         interactions: customer.interactions,
       };
     } catch (error) {
@@ -421,7 +433,7 @@ export class CustomerService {
         include: {
           _count: {
             select: {
-              notes: true,
+              customerNotes: true,
               interactions: true,
             },
           },
@@ -443,7 +455,7 @@ export class CustomerService {
         status: customer.status,
         tags: customer.tags,
         interactionsCount: customer._count.interactions,
-        notesCount: customer._count.notes,
+        notesCount: customer._count.customerNotes,
         lastInteractionAt: customer.interactions[0]?.createdAt,
         createdAt: customer.createdAt,
       }));

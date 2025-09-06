@@ -1,0 +1,217 @@
+# Docker Compose - ERP Nexus Development (Versão Simples e Funcional)
+
+services:
+  # Database - PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexus_erp
+      POSTGRES_USER: nexus_user
+      POSTGRES_PASSWORD: nexus_dev_20250905
+      POSTGRES_MULTIPLE_EXTENSIONS: uuid-ossp
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus_user -d nexus_erp"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Cache & Message Broker - Redis
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # User Management Service (Dev Mode)
+  user-management:
+    image: node:18
+    container_name: nexus-user-management
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_dev_20250905@postgres:5432/nexus_erp
+      - JWT_SECRET=nexus-jwt-dev-20250905-super-secure
+      - GATEWAY_HMAC_SECRET=nexus-hmac-dev-20250905-inter-service-secure
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "5003:3000"
+    volumes:
+      - ./modules/user-management:/app
+      - user_management_node_modules:/app/node_modules
+    networks:
+      - nexus-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "apt-get update && apt-get install -y curl && npm install && npm run dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # API Gateway (Dev Mode)
+  api-gateway:
+    image: node:18
+    container_name: nexus-api-gateway
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - PORT=5001
+      - DATABASE_URL=postgresql://nexus_user:nexus_dev_20250905@postgres:5432/nexus_erp
+      - JWT_SECRET=nexus-jwt-dev-20250905-super-secure
+      - GATEWAY_HMAC_SECRET=nexus-hmac-dev-20250905-inter-service-secure
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./modules/api-gateway:/app
+      - api_gateway_node_modules:/app/node_modules
+    networks:
+      - nexus-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-management:
+        condition: service_healthy
+    command: sh -c "apt-get update && apt-get install -y curl && npm install && npm run dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # CRM Service (Dev Mode)
+  crm:
+    image: node:18
+    container_name: nexus-crm
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - DATABASE_URL=postgresql://nexus_user:nexus_dev_20250905@postgres:5432/nexus_erp
+      - JWT_SECRET=nexus-jwt-dev-20250905-super-secure
+      - GATEWAY_HMAC_SECRET=nexus-hmac-dev-20250905-inter-service-secure
+      - REDIS_URL=redis://redis:6379
+    ports:
+      - "5004:3000"
+    volumes:
+      - ./modules/crm:/app
+      - crm_node_modules:/app/node_modules
+    networks:
+      - nexus-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      user-management:
+        condition: service_healthy
+    command: sh -c "apt-get update && apt-get install -y curl && npm install && npm run dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  # Frontend Next.js (Dev Mode)
+  frontend:
+    image: node:18
+    container_name: nexus-frontend
+    restart: unless-stopped
+    working_dir: /app
+    environment:
+      - NODE_ENV=development
+      - NEXT_PUBLIC_API_URL=http://localhost:5001/api
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    networks:
+      - nexus-network
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    command: sh -c "apt-get update && apt-get install -y curl && npm install && npm run dev"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+
+  # Nginx Load Balancer
+  nginx:
+    image: nginx:alpine
+    container_name: nexus-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "5000:80"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - nexus-network
+    depends_on:
+      - frontend
+      - api-gateway
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+# Networks
+networks:
+  nexus-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Persistent Volumes  
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  user_management_node_modules:
+    driver: local
+  api_gateway_node_modules:
+    driver: local
+  crm_node_modules:
+    driver: local
+  frontend_node_modules:
+    driver: local

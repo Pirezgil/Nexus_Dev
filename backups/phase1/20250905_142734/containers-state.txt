@@ -1,0 +1,9 @@
+NAME                    IMAGE                             COMMAND                  SERVICE                 CREATED       STATUS                   PORTS
+nexus-api-gateway       erp_nexus-api-gateway             "dumb-init -- node d…"   api-gateway             3 hours ago   Up 3 hours (unhealthy)   0.0.0.0:5001->5001/tcp, [::]:5001->5001/tcp
+nexus-crm               erp_nexus-nexus-crm               "docker-entrypoint.s…"   nexus-crm               3 hours ago   Up 3 hours (healthy)     0.0.0.0:5004->3000/tcp, [::]:5004->3000/tcp
+nexus-frontend          node:18-alpine                    "docker-entrypoint.s…"   nexus-frontend          3 hours ago   Up 3 hours               3000/tcp
+nexus-nginx             nginx:alpine                      "/docker-entrypoint.…"   nginx                   3 hours ago   Up 3 hours (healthy)     0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:5000->80/tcp, [::]:5000->80/tcp
+nexus-postgres          postgres:15-alpine                "docker-entrypoint.s…"   postgres                3 hours ago   Up 3 hours (healthy)     0.0.0.0:5433->5432/tcp, [::]:5433->5432/tcp
+nexus-redis             redis:7-alpine                    "docker-entrypoint.s…"   redis                   3 hours ago   Up 3 hours (healthy)     0.0.0.0:6379->6379/tcp, [::]:6379->6379/tcp
+nexus-services          erp_nexus-nexus-services          "docker-entrypoint.s…"   nexus-services          3 hours ago   Up 3 hours (unhealthy)   0.0.0.0:5005->3000/tcp, [::]:5005->3000/tcp
+nexus-user-management   erp_nexus-nexus-user-management   "docker-entrypoint.s…"   nexus-user-management   3 hours ago   Up 3 hours (healthy)     0.0.0.0:5003->3000/tcp, [::]:5003->3000/tcp

@@ -1,0 +1,632 @@
+# =====================================================================
+# Production Deployment Configuration - ERP Nexus
+# =====================================================================
+# This Docker Compose configuration is optimized for production
+# deployment with enhanced security, resource management, and monitoring.
+# =====================================================================
+
+services:
+  # Database - PostgreSQL with production settings
+  postgres:
+    image: postgres:15-alpine
+    container_name: nexus-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB_FILE: /run/secrets/nexus_db_name
+      POSTGRES_USER_FILE: /run/secrets/nexus_db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/nexus_db_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      # Production PostgreSQL optimization
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: pg_stat_statements,pg_buffercache
+      POSTGRES_MAX_CONNECTIONS: 100
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_WORK_MEM: 4MB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+    # No exposed ports in production - internal network only
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./infrastructure/database/init-prod.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infrastructure/database/postgresql-prod.conf:/etc/postgresql/postgresql.conf:ro
+    secrets:
+      - nexus_db_name
+      - nexus_db_user
+      - nexus_db_password
+      - nexus_hmac_secret
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$(cat /run/secrets/nexus_db_user) -d $$(cat /run/secrets/nexus_db_name)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+      placement:
+        constraints:
+          - node.labels.database == true
+      update_config:
+        parallelism: 1
+        delay: 30s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Redis - Production with authentication and persistence
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis-prod
+    restart: unless-stopped
+    command: >
+      sh -c "
+        redis-server 
+          --requirepass $$(cat /run/secrets/nexus_redis_password)
+          --appendonly yes
+          --appendfsync everysec
+          --maxmemory 512mb
+          --maxmemory-policy allkeys-lru
+          --save 900 1
+          --save 300 10
+          --save 60 10000
+          --tcp-keepalive 300
+          --timeout 0
+      "
+    # No exposed ports in production
+    volumes:
+      - redis_data_prod:/data
+      - redis_config_prod:/usr/local/etc/redis
+    secrets:
+      - nexus_redis_password
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$$(cat /run/secrets/nexus_redis_password)", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+      placement:
+        constraints:
+          - node.labels.cache == true
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # User Management Module - Production
+  nexus-user-management:
+    build:
+      context: ./modules/user-management
+      dockerfile: Dockerfile.prod
+      target: production
+    container_name: nexus-user-management-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVICE_NAME=user-management
+      - SERVICE_VERSION=1.0.0
+      # Security settings
+      - BCRYPT_SALT_ROUNDS=14
+      - JWT_ALGORITHM=RS256
+      # Performance tuning
+      - NODE_OPTIONS=--max-old-space-size=512
+      - UV_THREADPOOL_SIZE=8
+      # Timeout configurations (production values)
+      - TIMEOUT_HEALTH_CHECK=3000
+      - TIMEOUT_QUICK_OPERATIONS=5000
+      - TIMEOUT_INTERNAL_SERVICE=15000
+      - TIMEOUT_API_CLIENT=20000
+      - TIMEOUT_GATEWAY=30000
+      - TIMEOUT_EXTERNAL_API=45000
+    secrets:
+      - nexus_database_url
+      - nexus_redis_url
+      - nexus_redis_password
+      - nexus_jwt_secret
+      - nexus_jwt_private_key
+      - nexus_jwt_public_key
+      - nexus_hmac_secret
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+      placement:
+        constraints:
+          - node.labels.app == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # CRM Module - Production
+  nexus-crm:
+    build:
+      context: .
+      dockerfile: ./modules/crm/Dockerfile.prod
+      target: production
+    container_name: nexus-crm-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVICE_NAME=crm
+      - SERVICE_VERSION=1.0.0
+      - USER_MANAGEMENT_URL=http://nexus-user-management-prod:3000
+      # Performance tuning
+      - NODE_OPTIONS=--max-old-space-size=512
+      - UV_THREADPOOL_SIZE=8
+      # Production timeout values
+      - TIMEOUT_HEALTH_CHECK=3000
+      - TIMEOUT_QUICK_OPERATIONS=5000
+      - TIMEOUT_INTERNAL_SERVICE=15000
+      - TIMEOUT_API_CLIENT=20000
+      - TIMEOUT_GATEWAY=30000
+      - TIMEOUT_EXTERNAL_API=45000
+    secrets:
+      - nexus_database_url
+      - nexus_redis_url
+      - nexus_redis_password
+      - nexus_jwt_secret
+      - nexus_hmac_secret
+    depends_on:
+      - postgres
+      - redis
+      - nexus-user-management
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+      placement:
+        constraints:
+          - node.labels.app == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Services Module - Production
+  nexus-services:
+    build:
+      context: .
+      dockerfile: ./modules/services/Dockerfile.prod
+      target: production
+    container_name: nexus-services-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVICE_NAME=services
+      - SERVICE_VERSION=1.0.0
+      - USER_MANAGEMENT_URL=http://nexus-user-management-prod:3000
+      - CRM_URL=http://nexus-crm-prod:3000
+      # Performance tuning
+      - NODE_OPTIONS=--max-old-space-size=512
+      - UV_THREADPOOL_SIZE=8
+      # Production timeouts
+      - TIMEOUT_HEALTH_CHECK=3000
+      - TIMEOUT_QUICK_OPERATIONS=5000
+      - TIMEOUT_INTERNAL_SERVICE=15000
+      - TIMEOUT_API_CLIENT=20000
+      - TIMEOUT_GATEWAY=30000
+      - TIMEOUT_EXTERNAL_API=45000
+    secrets:
+      - nexus_database_url
+      - nexus_redis_url
+      - nexus_redis_password
+      - nexus_jwt_secret
+      - nexus_hmac_secret
+    depends_on:
+      - postgres
+      - redis
+      - nexus-user-management
+      - nexus-crm
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+      placement:
+        constraints:
+          - node.labels.app == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Agendamento Module - Production with WhatsApp integration
+  nexus-agendamento:
+    build:
+      context: .
+      dockerfile: ./modules/agendamento/Dockerfile.prod
+      target: production
+    container_name: nexus-agendamento-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SERVICE_NAME=agendamento
+      - SERVICE_VERSION=1.0.0
+      - USER_MANAGEMENT_URL=http://nexus-user-management-prod:3000
+      - CRM_URL=http://nexus-crm-prod:3000
+      - SERVICES_URL=http://nexus-services-prod:3000
+      # WhatsApp API configuration
+      - WHATSAPP_API_VERSION=v18.0
+      - WHATSAPP_API_BASE_URL=https://graph.facebook.com
+      # Redis configuration for queues
+      - REDIS_HOST=nexus-redis-prod
+      - REDIS_PORT=6379
+      - REDIS_DB=3
+      # Performance tuning
+      - NODE_OPTIONS=--max-old-space-size=512
+      - UV_THREADPOOL_SIZE=8
+      # Production timeouts
+      - TIMEOUT_HEALTH_CHECK=3000
+      - TIMEOUT_QUICK_OPERATIONS=5000
+      - TIMEOUT_INTERNAL_SERVICE=15000
+      - TIMEOUT_API_CLIENT=20000
+      - TIMEOUT_GATEWAY=30000
+      - TIMEOUT_EXTERNAL_API=60000
+    secrets:
+      - nexus_database_url
+      - nexus_redis_url
+      - nexus_redis_password
+      - nexus_jwt_secret
+      - nexus_hmac_secret
+      - nexus_whatsapp_phone_id
+      - nexus_whatsapp_access_token
+      - nexus_whatsapp_app_secret
+      - nexus_whatsapp_webhook_token
+    depends_on:
+      - postgres
+      - redis
+      - nexus-user-management
+      - nexus-crm
+      - nexus-services
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 45s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 1G
+          cpus: '0.5'
+        reservations:
+          memory: 512M
+          cpus: '0.25'
+      placement:
+        constraints:
+          - node.labels.app == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Frontend Application - Production build
+  nexus-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      target: production
+      args:
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-https://api.nexus-erp.com}
+        - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-https://api.nexus-erp.com}
+        - NEXT_PUBLIC_GATEWAY_URL=${NEXT_PUBLIC_GATEWAY_URL:-https://api.nexus-erp.com}
+    container_name: nexus-frontend-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - NEXT_TELEMETRY_DISABLED=1
+    depends_on:
+      - api-gateway
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+      placement:
+        constraints:
+          - node.labels.frontend == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Load Balancer/Reverse Proxy - Nginx with SSL
+  nginx:
+    image: nginx:alpine
+    container_name: nexus-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx-prod.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/ssl:/etc/nginx/ssl:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+      - nginx_cache:/var/cache/nginx
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - nexus-frontend
+      - api-gateway
+    networks:
+      - nexus-network-prod
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+      placement:
+        constraints:
+          - node.labels.edge == true
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # API Gateway - Production with enhanced security
+  api-gateway:
+    build:
+      context: .
+      dockerfile: ./modules/api-gateway/Dockerfile.prod
+      target: production
+    container_name: nexus-api-gateway-prod
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+      - SERVICE_NAME=api-gateway
+      - SERVICE_VERSION=1.0.0
+      - USER_MANAGEMENT_URL=http://nexus-user-management-prod:3000
+      - CRM_URL=http://nexus-crm-prod:3000
+      - SERVICES_URL=http://nexus-services-prod:3000
+      - AGENDAMENTO_URL=http://nexus-agendamento-prod:3000
+      - FRONTEND_URL=http://nexus-frontend-prod:3000
+      - LOG_LEVEL=warn
+      # CORS for production domains
+      - CORS_ORIGINS=${PRODUCTION_CORS_ORIGINS:-https://nexus-erp.com,https://www.nexus-erp.com,https://api.nexus-erp.com}
+      # Performance tuning
+      - NODE_OPTIONS=--max-old-space-size=1024
+      - UV_THREADPOOL_SIZE=16
+      # Production gateway timeouts
+      - TIMEOUT_HEALTH_CHECK=3000
+      - TIMEOUT_QUICK_OPERATIONS=5000
+      - TIMEOUT_INTERNAL_SERVICE=15000
+      - TIMEOUT_GATEWAY=45000
+      - TIMEOUT_GATEWAY_CRM=45000
+      - TIMEOUT_GATEWAY_SERVICES=45000
+      - TIMEOUT_GATEWAY_AGENDAMENTO=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    secrets:
+      - nexus_jwt_secret
+      - nexus_hmac_secret
+    depends_on:
+      - postgres
+      - redis
+      - nexus-user-management
+    networks:
+      - nexus-network-prod
+    volumes:
+      - api_gateway_logs:/app/logs
+      - ./shared:/app/shared:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+      placement:
+        constraints:
+          - node.labels.gateway == true
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+# =====================================================================
+# Production Secrets Configuration
+# =====================================================================
+secrets:
+  # Database secrets
+  nexus_db_name:
+    external: true
+  nexus_db_user:
+    external: true
+  nexus_db_password:
+    external: true
+  nexus_database_url:
+    external: true
+  
+  # Application secrets
+  nexus_jwt_secret:
+    external: true
+  nexus_jwt_private_key:
+    external: true
+  nexus_jwt_public_key:
+    external: true
+  nexus_hmac_secret:
+    external: true
+  
+  # Redis secrets
+  nexus_redis_url:
+    external: true
+  nexus_redis_password:
+    external: true
+  
+  # WhatsApp Business API secrets
+  nexus_whatsapp_phone_id:
+    external: true
+  nexus_whatsapp_access_token:
+    external: true
+  nexus_whatsapp_app_secret:
+    external: true
+  nexus_whatsapp_webhook_token:
+    external: true
+
+# =====================================================================
+# Production Volumes and Networks
+# =====================================================================
+volumes:
+  postgres_data_prod:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/nexus/data/postgres
+  redis_data_prod:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /opt/nexus/data/redis
+  redis_config_prod:
+    driver: local
+  nginx_cache:
+    driver: local
+  nginx_logs:
+    driver: local
+  api_gateway_logs:
+    driver: local
+
+networks:
+  nexus-network-prod:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.0.0/16
+    driver_opts:
+      com.docker.network.bridge.name: nexus-prod-br0
+      com.docker.network.bridge.enable_icc: "true"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+# =====================================================================
+# Production Deployment Notes:
+# =====================================================================
+# 1. This configuration requires Docker Swarm mode for deployment
+# 2. Node labels must be set for proper service placement
+# 3. SSL certificates must be provided in ./infrastructure/nginx/ssl/
+# 4. All secrets must be created before deployment
+# 5. Data volumes are mounted to persistent storage locations
+# 6. Services are replicated for high availability
+# 7. Resource limits prevent resource exhaustion
+# 8. Health checks ensure service reliability
+# 9. Update policies enable zero-downtime deployments
+# 10. Network isolation provides security
+# =====================================================================

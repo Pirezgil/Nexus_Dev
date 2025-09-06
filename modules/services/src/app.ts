@@ -43,36 +43,10 @@ class App {
       crossOriginResourcePolicy: { policy: "cross-origin" }
     }));
 
-    // CORS configuration
-    this.app.use(cors({
-      origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin) return callback(null, true);
-        
-        if (config.corsOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-        
-        // In development, allow localhost on any port
-        if (config.nodeEnv === 'development' && origin.includes('localhost')) {
-          return callback(null, true);
-        }
-        
-        return callback(new Error('Not allowed by CORS'), false);
-      },
-      credentials: true,
-      methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-      allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'X-Requested-With',
-        'X-Company-ID',
-        'X-User-ID',
-        'Accept',
-        'Origin'
-      ],
-      optionsSuccessStatus: 200, // Support legacy browsers
-    }));
+    // CORS removido do módulo Services - centralizado no API Gateway
+    // O API Gateway já aplica as políticas CORS para requisições externas
+    // Este microsserviço opera na rede interna do Docker e recebe apenas
+    // requisições já filtradas pelo Gateway
 
     // Compression middleware
     this.app.use(compression({
@@ -172,6 +146,26 @@ class App {
           },
         },
         message: 'Nexus Services module is running successfully',
+      });
+    });
+
+    // Health check endpoint specifically for Docker health checks
+    this.app.get('/health', (req, res) => {
+      res.status(200).json({
+        success: true,
+        data: {
+          status: 'healthy',
+          service: 'Nexus Services',
+          version: '1.0.0',
+          timestamp: new Date().toISOString(),
+          uptime: Math.floor(process.uptime()),
+          environment: config.nodeEnv,
+          memory: {
+            used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024 * 100) / 100,
+            total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024 * 100) / 100,
+          },
+        },
+        message: 'Services module is healthy and ready',
       });
     });
 

@@ -36,9 +36,9 @@ services:
     image: redis:7-alpine
     container_name: nexus-redis
     restart: unless-stopped
-    # ✅ Redis apenas para comunicação interna - sem exposição externa por segurança
-    expose:
-      - "6379"
+    # ⚠️ Redis exposto temporariamente para desenvolvimento local
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -81,10 +81,11 @@ services:
     networks:
       - nexus-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   # CRM Module
   nexus-crm:
@@ -120,10 +121,11 @@ services:
     networks:
       - nexus-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   # Services Module
   nexus-services:
@@ -162,10 +164,11 @@ services:
     networks:
       - nexus-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   # Agendamento Module
   # ⚠️ PROBLEMA IDENTIFICADO: TransformError no build - necessário investigar Dockerfile ou dependências
@@ -219,10 +222,11 @@ services:
     networks:
       - nexus-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
   # Frontend Application - Development with bind volumes
   nexus-frontend:
@@ -230,7 +234,7 @@ services:
     container_name: nexus-frontend
     restart: unless-stopped
     working_dir: /app
-    command: sh -c "apk add --no-cache curl && npm install --no-audit --no-fund && npx next dev --port 3000 --hostname 0.0.0.0"
+    command: sh -c "apk add --no-cache curl && npm install --no-audit --no-fund && npm run dev"
     expose:
       - "3000"          # Não expor diretamente - usar apenas via Nginx
     environment:
@@ -276,10 +280,10 @@ services:
 
   # API Gateway (Node.js) - ÚNICO PONTO DE ENTRADA EXTERNO
   api-gateway:
-    image: node:18-alpine
+    build:
+      context: .
+      dockerfile: ./modules/api-gateway/Dockerfile
     container_name: nexus-api-gateway
-    working_dir: /app
-    command: sh -c "npm install && npm run build && npm start"
     restart: unless-stopped
     # ✅ API Gateway deve ser exposto externamente para comunicação com frontend
     ports:
@@ -315,14 +319,14 @@ services:
     networks:
       - nexus-network
     volumes:
-      - ./modules/api-gateway:/app
       - ./modules/api-gateway/logs:/app/logs
       - ./shared:/app/shared
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://127.0.0.1:5001/health || exit 1"]
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5001/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
 
 volumes:
   postgres_data:

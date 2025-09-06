@@ -123,19 +123,8 @@ const forwardToUserManagement = async (req: Request, res: Response, path: string
 
     const data = await response.json();
 
-    // Add CORS headers
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3002', 
-      'http://localhost:5000',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
-    
-    const origin = req.headers.origin;
-    const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || '*';
-    
-    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // CORS removido - já aplicado globalmente no server.ts
+    // Evita duplicação de cabeçalhos CORS que causam conflitos
     res.setHeader('X-Gateway-Processed', 'true');
     res.setHeader('X-Request-ID', requestId);
 
@@ -257,19 +246,8 @@ authRoutes.post('/avatar', upload.single('avatar'), async (req: Request, res: Re
 
     const data = await response.json();
 
-    // Add CORS headers
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3002', 
-      'http://localhost:5000',
-      process.env.FRONTEND_URL
-    ].filter(Boolean);
-    
-    const origin = req.headers.origin;
-    const allowOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0] || '*';
-    
-    res.setHeader('Access-Control-Allow-Origin', allowOrigin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    // CORS removido - já aplicado globalmente no server.ts
+    // Evita duplicação de cabeçalhos CORS que causam conflitos
     res.setHeader('X-Gateway-Processed', 'true');
     res.setHeader('X-Request-ID', requestId);
 

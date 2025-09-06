@@ -4,8 +4,9 @@
   "description": "CRM module for Nexus ERP - Customer Relationship Management system",
   "main": "dist/app.js",
   "scripts": {
-    "dev": "tsx watch src/app.ts",
-    "build": "tsc",
+    "dev": "tsx watch src/appSimplified.ts",
+    "dev-original": "tsx watch src/app.ts",
+    "build": "npm run db:generate && tsc",
     "start": "node dist/app.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",

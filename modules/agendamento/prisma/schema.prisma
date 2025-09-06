@@ -2,6 +2,7 @@
 // Responsável pela gestão completa de agendamentos, calendário e notificações
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl"]
   previewFeatures = ["multiSchema"]
 }
 

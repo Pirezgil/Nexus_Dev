@@ -25,8 +25,13 @@ const API_ROUTES = {
   health: '/health',
 } as const;
 
+// ========================================
+// TOKEN REFRESH QUEUE & PERSISTENCE MANAGER
+// ========================================
+
 // Queue para controlar múltiplas tentativas de refresh simultâneas
 let isRefreshing = false;
+let refreshPromise: Promise<string | null> | null = null;
 let failedQueue: Array<{ resolve: Function; reject: Function }> = [];
 
 const processQueue = (error: any, token: string | null = null) => {
@@ -40,6 +45,146 @@ const processQueue = (error: any, token: string | null = null) => {
   
   failedQueue = [];
 };
+
+// Token persistence manager com validação robusta
+class TokenPersistenceManager {
+  private static readonly TOKEN_KEY = 'erp_nexus_token';
+  private static readonly REFRESH_TOKEN_KEY = 'erp_nexus_refresh_token';
+  private static readonly TOKEN_TIMESTAMP_KEY = 'erp_nexus_token_timestamp';
+  
+  // Salvar token com timestamp e validação
+  static saveToken(token: string, refreshToken?: string): boolean {
+    if (typeof window === 'undefined') return false;
+    
+    try {
+      const timestamp = Date.now().toString();
+      
+      // Salvar com timestamp para rastreamento
+      localStorage.setItem(this.TOKEN_KEY, token);
+      localStorage.setItem(this.TOKEN_TIMESTAMP_KEY, timestamp);
+      
+      if (refreshToken) {
+        localStorage.setItem(this.REFRESH_TOKEN_KEY, refreshToken);
+      }
+      
+      // Verificar se foi salvo corretamente
+      const savedToken = localStorage.getItem(this.TOKEN_KEY);
+      const savedTimestamp = localStorage.getItem(this.TOKEN_TIMESTAMP_KEY);
+      
+      const success = savedToken === token && savedTimestamp === timestamp;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔐 Token persistence result:', {
+          success,
+          tokenLength: token.length,
+          tokenPreview: token.substring(0, 20) + '...',
+          timestamp,
+          refreshTokenSaved: !!refreshToken
+        });
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('❌ Failed to save token:', error);
+      return false;
+    }
+  }
+  
+  // Recuperar token com fallbacks e validação
+  static getToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    
+    try {
+      // Tentar localStorage primeiro
+      let token = localStorage.getItem(this.TOKEN_KEY);
+      const timestamp = localStorage.getItem(this.TOKEN_TIMESTAMP_KEY);
+      
+      if (token) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔍 Token retrieved from localStorage:', {
+            tokenPreview: token.substring(0, 20) + '...',
+            timestamp: timestamp ? new Date(parseInt(timestamp)).toISOString() : 'no timestamp',
+            age: timestamp ? (Date.now() - parseInt(timestamp)) / 1000 / 60 : 'unknown'
+          });
+        }
+        return token;
+      }
+      
+      // Fallback para sessionStorage
+      token = sessionStorage.getItem(this.TOKEN_KEY);
+      if (token) {
+        // Mover de sessionStorage para localStorage
+        this.saveToken(token);
+        sessionStorage.removeItem(this.TOKEN_KEY);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔄 Token migrated from sessionStorage to localStorage');
+        }
+        return token;
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('⚠️ No token found in any storage');
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error retrieving token:', error);
+      return null;
+    }
+  }
+  
+  // Recuperar refresh token
+  static getRefreshToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    
+    try {
+      return localStorage.getItem(this.REFRESH_TOKEN_KEY);
+    } catch (error) {
+      console.error('❌ Error retrieving refresh token:', error);
+      return null;
+    }
+  }
+  
+  // Limpar todos os tokens
+  static clearTokens(): void {
+    if (typeof window === 'undefined') return;
+    
+    try {
+      localStorage.removeItem(this.TOKEN_KEY);
+      localStorage.removeItem(this.REFRESH_TOKEN_KEY);
+      localStorage.removeItem(this.TOKEN_TIMESTAMP_KEY);
+      sessionStorage.removeItem(this.TOKEN_KEY);
+      
+      // Limpar também o store do Zustand
+      localStorage.removeItem('erp-nexus-auth');
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🧹 All tokens cleared from storage');
+      }
+    } catch (error) {
+      console.error('❌ Error clearing tokens:', error);
+    }
+  }
+  
+  // Validar integridade do token
+  static validateTokenIntegrity(token: string): boolean {
+    if (!token || typeof token !== 'string') return false;
+    
+    // Verificar se é um JWT válido (tem 3 partes separadas por pontos)
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    
+    try {
+      // Tentar decodificar o header e payload para verificar se é JSON válido
+      JSON.parse(atob(parts[0]));
+      JSON.parse(atob(parts[1]));
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+}
 
 // Configuração base do Axios
 const createApiInstance = (baseURL: string): AxiosInstance => {
@@ -59,14 +204,29 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
         config.headers.Authorization = `Bearer ${token}`;
       }
       
-      // Log da requisição em desenvolvimento
+      // Log da requisição em desenvolvimento com mais detalhes
       if (process.env.NODE_ENV === 'development') {
-        console.log(`🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`, config.data);
-        console.log(`🔍 Token status: ${token ? 'Present' : 'Missing'} | Auth header: ${config.headers.Authorization ? 'Set' : 'Not set'}`);
+        console.log(`🔄 API Request: ${config.method?.toUpperCase()} ${config.url}`, {
+          hasData: !!config.data,
+          dataKeys: config.data ? Object.keys(config.data) : [],
+          headers: Object.keys(config.headers || {})
+        });
+        
+        console.log(`🔍 Authentication Status:`, {
+          tokenPresent: !!token,
+          tokenValid: token ? TokenPersistenceManager.validateTokenIntegrity(token) : false,
+          authHeaderSet: !!config.headers.Authorization,
+          refreshInProgress: isRefreshing
+        });
+        
         if (token) {
-          console.log(`🔑 Token (first 50 chars): ${token.substring(0, 50)}...`);
+          console.log(`🔑 Token Info:`, {
+            preview: token.substring(0, 50) + '...',
+            length: token.length,
+            isValidJWT: TokenPersistenceManager.validateTokenIntegrity(token)
+          });
         } else {
-          console.warn('⚠️ No auth token found in localStorage');
+          console.warn('⚠️ No auth token found - request will be sent without authentication');
         }
       }
       
@@ -81,9 +241,15 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
   // Interceptor de Response - Tratamento de erros e tokens
   instance.interceptors.response.use(
     (response) => {
-      // Log da resposta em desenvolvimento
+      // Log da resposta em desenvolvimento com mais detalhes
       if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ API Response: ${response.config.url}`, response.data);
+        console.log(`✅ API Response: ${response.config.url}`, {
+          status: response.status,
+          success: response.data?.success,
+          hasData: !!response.data?.data,
+          dataType: typeof response.data?.data,
+          responseSize: JSON.stringify(response.data).length
+        });
       }
       
       return response;
@@ -118,11 +284,23 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
             throw new Error('No refresh token available');
           }
 
-          console.log('🔄 Attempting token refresh...');
-          await refreshAuthToken();
-          const newToken = getAuthToken();
+          console.log('🔄 Attempting token refresh for failed request:', originalRequest.url);
+          const newToken = await refreshAuthToken();
+          
+          console.log('🔄 Token refresh result:', {
+            success: !!newToken,
+            tokenPreview: newToken ? newToken.substring(0, 20) + '...' : 'null',
+            originalUrl: originalRequest.url
+          });
           
           if (newToken) {
+            // Verificar novamente se o token foi persistido corretamente
+            const persistedToken = getAuthToken();
+            if (persistedToken !== newToken) {
+              console.error('❌ Token persistence mismatch after refresh');
+              throw new Error('Token persistence failed after refresh');
+            }
+            
             // Processar fila de requisições pendentes
             processQueue(null, newToken);
             
@@ -132,15 +310,26 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
             }
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             
-            console.log('✅ Retrying original request with new token');
+            console.log('✅ Retrying original request with refreshed token:', {
+              url: originalRequest.url,
+              tokenPreview: newToken.substring(0, 20) + '...',
+              authHeaderSet: !!originalRequest.headers.Authorization
+            });
+            
             return instance(originalRequest);
           } else {
             throw new Error('Failed to get new token after refresh');
           }
-        } catch (refreshError) {
-          console.error('❌ Token refresh failed:', refreshError);
+        } catch (refreshError: any) {
+          console.error('❌ Token refresh failed for request:', {
+            originalUrl: originalRequest.url,
+            error: refreshError.message,
+            response: refreshError.response?.data
+          });
+          
           // Processar fila com erro
           processQueue(refreshError, null);
+          
           // Falha na renovação - redirecionar para login
           redirectToLogin();
           return Promise.reject(refreshError);
@@ -154,12 +343,18 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
         console.warn('⚠️ Access forbidden - insufficient permissions');
       }
       
-      // Log do erro
+      // Log do erro com mais contexto
       console.error('❌ API Error:', {
         url: error.config?.url,
+        method: error.config?.method?.toUpperCase(),
         status: error.response?.status,
+        statusText: error.response?.statusText,
         message: error.response?.data?.message || error.message,
-        data: error.response?.data,
+        errorCode: error.code,
+        hasRefreshToken: !!getRefreshToken(),
+        wasRetry: error.config?._retry,
+        responseData: error.response?.data,
+        requestId: error.config?.headers?.['x-request-id'] || 'unknown'
       });
       
       return Promise.reject(error);
@@ -184,86 +379,148 @@ export const agendamentoApi = api;
 // HELPER FUNCTIONS
 // ====================================
 
-// Obter token do localStorage/sessionStorage
+// ========================================
+// TOKEN ACCESS FUNCTIONS (Updated)
+// ========================================
+
+// Obter token usando o manager robusto
 const getAuthToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
+  const token = TokenPersistenceManager.getToken();
   
-  // First try to get from localStorage (primary storage)
-  const token = localStorage.getItem('erp_nexus_token');
-  if (token) {
-    return token;
+  // Validar integridade do token antes de retornar
+  if (token && !TokenPersistenceManager.validateTokenIntegrity(token)) {
+    console.warn('⚠️ Invalid token format detected, clearing...');
+    TokenPersistenceManager.clearTokens();
+    return null;
   }
   
-  // Fallback to sessionStorage if needed
-  const sessionToken = sessionStorage.getItem('erp_nexus_token');
-  if (sessionToken) {
-    return sessionToken;
-  }
-  
-  return null;
+  return token;
 };
 
-// Obter refresh token do localStorage
+// Obter refresh token usando o manager
 const getRefreshToken = (): string | null => {
-  if (typeof window === 'undefined') return null;
-  return localStorage.getItem('erp_nexus_refresh_token');
+  return TokenPersistenceManager.getRefreshToken();
 };
 
-// Renovar token de autenticação via API Gateway
-const refreshAuthToken = async (): Promise<void> => {
+// ========================================
+// ENHANCED TOKEN REFRESH FUNCTION
+// ========================================
+
+// Renovar token de autenticação via API Gateway (VERSÃO ROBUSTA)
+const refreshAuthToken = async (): Promise<string | null> => {
+  // Se já está refreshing, retornar a promise existente
+  if (isRefreshing && refreshPromise) {
+    console.log('🔄 Token refresh already in progress, waiting for result...');
+    return refreshPromise;
+  }
+  
   const refreshToken = getRefreshToken();
   
   if (!refreshToken) {
-    throw new Error('No refresh token available');
-  }
-
-  try {
-    // Criar uma instância separada para evitar loop infinito no interceptor
-    const refreshInstance = axios.create({
-      baseURL: API_BASE_URL,
-      timeout: parseInt(process.env.NEXT_PUBLIC_TIMEOUT_QUICK_OPERATIONS || '10000', 10),
-    });
-
-    const response = await refreshInstance.post(`${API_ROUTES.auth}/refresh`, { refreshToken });
-    
-    if (response.data?.success && response.data?.data) {
-      const { token, refreshToken: newRefreshToken } = response.data.data;
-      
-      localStorage.setItem('erp_nexus_token', token);
-      if (newRefreshToken) {
-        localStorage.setItem('erp_nexus_refresh_token', newRefreshToken);
-      }
-      
-      console.log('✅ Token refreshed successfully');
-    } else {
-      throw new Error('Invalid refresh response');
-    }
-  } catch (error) {
-    console.error('❌ Token refresh failed:', error);
-    // Limpar tokens inválidos
-    localStorage.removeItem('erp_nexus_token');
-    localStorage.removeItem('erp_nexus_refresh_token');
-    sessionStorage.removeItem('erp_nexus_token');
+    const error = new Error('No refresh token available');
+    console.error('❌ Refresh failed:', error.message);
     throw error;
   }
+
+  // Marcar como refreshing e criar nova promise
+  isRefreshing = true;
+  
+  refreshPromise = (async () => {
+    try {
+      // Criar uma instância separada para evitar loop infinito no interceptor
+      const refreshInstance = axios.create({
+        baseURL: API_BASE_URL,
+        timeout: parseInt(process.env.NEXT_PUBLIC_TIMEOUT_QUICK_OPERATIONS || '15000', 10),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      console.log('🔄 Starting token refresh with token:', refreshToken.substring(0, 20) + '...');
+      
+      const response = await refreshInstance.post(`${API_ROUTES.auth}/refresh`, { 
+        refreshToken,
+        timestamp: Date.now() // Add timestamp for debugging
+      });
+      
+      console.log('🔄 Refresh response received:', {
+        success: response.data?.success,
+        hasData: !!response.data?.data,
+        statusCode: response.status
+      });
+      
+      if (response.data?.success && response.data?.data) {
+        const { token, refreshToken: newRefreshToken } = response.data.data;
+        
+        if (!token) {
+          throw new Error('No token in refresh response');
+        }
+        
+        // Validar formato do novo token
+        if (!TokenPersistenceManager.validateTokenIntegrity(token)) {
+          throw new Error('Invalid token format received from server');
+        }
+        
+        // Salvar novos tokens usando o manager robusto
+        const saveSuccess = TokenPersistenceManager.saveToken(token, newRefreshToken);
+        
+        if (!saveSuccess) {
+          throw new Error('Failed to persist new token');
+        }
+        
+        // Verificar se o token foi realmente salvo
+        const verificationToken = TokenPersistenceManager.getToken();
+        if (verificationToken !== token) {
+          throw new Error('Token persistence verification failed');
+        }
+        
+        console.log('✅ Token refreshed and verified successfully:', {
+          tokenPreview: token.substring(0, 20) + '...',
+          hasNewRefreshToken: !!newRefreshToken,
+          persistenceVerified: true
+        });
+        
+        return token;
+      } else {
+        throw new Error('Invalid refresh response format: ' + JSON.stringify(response.data));
+      }
+    } catch (error: any) {
+      console.error('❌ Token refresh failed:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      // Limpar tokens inválidos apenas se o refresh falhar definitivamente
+      TokenPersistenceManager.clearTokens();
+      
+      throw error;
+    } finally {
+      // Reset refresh state
+      isRefreshing = false;
+      refreshPromise = null;
+    }
+  })();
+  
+  return refreshPromise;
 };
 
-// Redirecionar para login
+// ========================================
+// ENHANCED LOGIN REDIRECT FUNCTION
+// ========================================
+
+// Redirecionar para login com limpeza completa
 const redirectToLogin = (): void => {
   if (typeof window !== 'undefined') {
-    console.log('🔄 Cleaning up authentication state...');
+    console.log('🔄 Starting complete authentication cleanup...');
     
-    // Limpar tokens do localStorage
-    localStorage.removeItem('erp_nexus_token');
-    localStorage.removeItem('erp_nexus_refresh_token');
-    sessionStorage.removeItem('erp_nexus_token');
+    // Usar o manager para limpeza completa
+    TokenPersistenceManager.clearTokens();
     
-    // Limpar o localStorage do Zustand também
-    try {
-      localStorage.removeItem('erp-nexus-auth');
-    } catch {
-      // Ignore if unable to clear
-    }
+    // Limpar qualquer estado de refresh em andamento
+    isRefreshing = false;
+    refreshPromise = null;
+    failedQueue = [];
     
     // Show a user-friendly message before redirecting
     const showSessionExpiredMessage = () => {
@@ -280,8 +537,11 @@ const redirectToLogin = (): void => {
         console.warn('Session expired - redirecting to login');
       }
       
-      // Redirect immediately for better UX - user will see login form
-      window.location.href = '/login';
+      // Pequeno delay para permitir que a limpeza termine
+      setTimeout(() => {
+        console.log('🔄 Redirecting to login page...');
+        window.location.href = '/login';
+      }, 100);
     };
     
     showSessionExpiredMessage();

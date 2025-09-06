@@ -4,7 +4,7 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'crypto';
 import { logger } from '../utils/logger';
 import { authMiddleware } from '../middleware/auth';
-import { HTTP_HEADERS } from 'shared/constants/headers';
+import { HTTP_HEADERS } from '../../shared/constants/headers';
 
 export const servicesRoutes = Router();
 

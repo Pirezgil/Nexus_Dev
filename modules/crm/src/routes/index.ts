@@ -1,9 +1,7 @@
 import { Router } from 'express';
-import customerRoutes from './customerRoutes';
-import noteRoutes from './noteRoutes';
-import interactionRoutes from './interactionRoutes';
-import statsRoutes from './statsRoutes';
+import customerRoutesNoAuth from './customerRoutesNoAuth';
 import healthRoutes from './healthRoutes';
+import statsRoutes from './statsRoutes';
 
 const router = Router();
 
@@ -16,37 +14,44 @@ router.use('/health', healthRoutes);
 
 // Validation routes temporarily disabled for infrastructure setup
 
-// Customer management routes
-router.use('/customers', customerRoutes);
+// Customer management routes - NO AUTH (TESTE)
+router.use('/customers', customerRoutesNoAuth);
 
-// Customer notes routes (nested under customers)
-router.use('/customers/:customerId/notes', noteRoutes);
-
-// Customer interactions routes (nested under customers)
-router.use('/customers/:customerId/interactions', interactionRoutes);
-
-// Statistics routes
+// Stats routes - NO AUTH (TESTE) 
 router.use('/stats', statsRoutes);
+
+// Rota de teste para validação de conectividade
+router.post('/test-connection', (req, res) => {
+  res.json({
+    success: true,
+    message: 'Conexão CRM funcionando!',
+    timestamp: new Date().toISOString(),
+    receivedData: {
+      hasBody: !!req.body,
+      bodyKeys: req.body ? Object.keys(req.body) : [],
+      method: req.method,
+      url: req.url
+    }
+  });
+});
 
 // API Info route
 router.get('/', (req, res) => {
   res.json({
     success: true,
     data: {
-      service: 'Nexus CRM',
-      version: '1.0.0',
-      description: 'Customer Relationship Management module for Nexus ERP',
+      service: 'Nexus CRM - SIMPLIFIED',
+      version: '2.0.0-simplified',
+      description: 'Customer Relationship Management - Direct Database Access',
+      architecture: 'simplified',
+      features: ['Direct DB connection', 'No API Gateway dependency', 'Minimal middleware'],
       endpoints: {
         health: '/health',
         customers: '/api/customers',
-        statistics: '/api/stats',
-      },
-      documentation: {
-        swagger: '/api/docs', // Future implementation
-        postman: '/api/postman', // Future implementation
-      },
+        test: '/api/test-connection',
+      }
     },
-    message: 'Nexus CRM API is running',
+    message: 'Nexus CRM API simplificado funcionando',
   });
 });
 

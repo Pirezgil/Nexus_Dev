@@ -1,0 +1,151 @@
+# Template de Dockerfile Multi-stage Seguro
+# ERP Nexus - Template Universal para Microserviços Node.js/TypeScript
+# Versão: 1.0 - Otimizado para Produção
+
+# ============================================================================
+# STAGE 1: BUILDER - Compilação e preparação
+# ============================================================================
+FROM node:18-alpine AS builder
+
+# Instalar dependências de sistema necessárias para build
+RUN apk add --no-cache \
+    libc6-compat \
+    python3 \
+    make \
+    g++ \
+    git \
+    && rm -rf /var/cache/apk/*
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar arquivos de dependências primeiro (melhor caching)
+COPY package.json package-lock.json* ./
+
+# Instalar TODAS as dependências (incluindo devDependencies para build)
+RUN npm ci --verbose
+
+# Copiar código fonte
+COPY . .
+
+# Copiar shared modules se existirem (padrão do ERP Nexus)
+COPY ../shared ./shared 2>/dev/null || echo "Shared modules not found, continuing..."
+
+# Gerar cliente Prisma se schema existir
+RUN if [ -f "prisma/schema.prisma" ]; then \
+        echo "Generating Prisma client..." && \
+        npx prisma generate; \
+    else \
+        echo "No Prisma schema found, skipping generation"; \
+    fi
+
+# Compilar TypeScript
+RUN npm run build
+
+# Verificar se o build foi bem-sucedido
+RUN if [ ! -d "dist" ]; then \
+        echo "❌ Build failed: dist directory not found" && \
+        exit 1; \
+    else \
+        echo "✅ Build successful" && \
+        ls -la dist/; \
+    fi
+
+# ============================================================================
+# STAGE 2: PRODUCTION - Imagem final otimizada
+# ============================================================================
+FROM node:18-alpine AS production
+
+# Metadados da imagem
+LABEL maintainer="ERP Nexus DevOps Team"
+LABEL version="1.0"
+LABEL description="ERP Nexus Microservice - Production Ready"
+
+# Atualizar sistema e instalar dependências de runtime
+RUN apk upgrade --no-cache && \
+    apk add --no-cache \
+        libc6-compat \
+        openssl \
+        curl \
+        dumb-init \
+        tzdata \
+    && rm -rf /var/cache/apk/*
+
+# Configurar timezone
+ENV TZ=America/Sao_Paulo
+
+# Criar usuário e grupo não-root para segurança
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Definir diretório de trabalho
+WORKDIR /app
+
+# Copiar package.json para instalar apenas dependências de produção
+COPY package.json package-lock.json* ./
+
+# Instalar apenas dependências de produção
+RUN npm ci --only=production --no-audit --no-fund && \
+    npm cache clean --force
+
+# Copiar arquivos compilados e necessários do stage builder
+COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+COPY --from=builder --chown=appuser:appgroup /app/node_modules/.prisma ./node_modules/.prisma 2>/dev/null || true
+COPY --from=builder --chown=appuser:appgroup /app/prisma ./prisma 2>/dev/null || true
+
+# Copiar arquivos de configuração necessários
+COPY --chown=appuser:appgroup package.json ./
+
+# Criar diretórios necessários com permissões corretas
+RUN mkdir -p logs tmp && \
+    chown -R appuser:appgroup logs tmp
+
+# Alternar para usuário não-root
+USER appuser
+
+# Configurar variáveis de ambiente
+ENV NODE_ENV=production
+ENV NODE_OPTIONS="--max-old-space-size=256 --enable-source-maps"
+ENV PORT=3000
+ENV LOG_LEVEL=info
+
+# Expor porta da aplicação
+EXPOSE 3000
+
+# Health check otimizado
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# Usar dumb-init para melhor handling de sinais
+ENTRYPOINT ["dumb-init", "--"]
+
+# Comando de inicialização
+CMD ["node", "dist/app.js"]
+
+# ============================================================================
+# NOTAS DE USO:
+# 
+# 1. Este template assume estrutura padrão do ERP Nexus:
+#    - package.json com script "build"
+#    - Código TypeScript em src/
+#    - Saída compilada em dist/
+#    - Arquivo principal: dist/app.js
+#
+# 2. Personalizações necessárias por módulo:
+#    - Ajustar comando final se o arquivo principal for diferente
+#    - Adicionar variáveis de ambiente específicas
+#    - Configurar portas específicas se diferentes de 3000
+#
+# 3. Recursos de segurança incluídos:
+#    - Usuário não-root (appuser:1001)
+#    - Imagem Alpine (menor superfície de ataque)
+#    - Apenas dependências de produção
+#    - Health check configurado
+#    - Dumb-init para melhor signal handling
+#
+# 4. Otimizações de performance:
+#    - Multi-stage build (reduz tamanho da imagem)
+#    - Cache layers otimizado
+#    - NODE_OPTIONS configurado
+#    - Apenas dependências necessárias
+# ============================================================================

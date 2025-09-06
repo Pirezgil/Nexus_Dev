@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "docker-compose up -d",
-    "build": "docker-compose build",
+    "build": "npm run build:modules && docker-compose build",
+    "build:modules": "concurrently \"cd modules/user-management && npm run build\" \"cd modules/crm && npm run build\" \"cd modules/services && npm run build\" \"cd modules/agendamento && npm run build\" \"cd modules/api-gateway && npm run build\" \"cd frontend && npm run build\"",
     "down": "docker-compose down",
     "logs": "docker-compose logs -f",
     "logs:user": "docker-compose logs -f nexus-user-management",
@@ -29,6 +30,10 @@
     "analytics:start": "cd shared && node --loader ts-node/esm scripts/start-analytics.ts",
     "analytics:test": "cd shared && node --loader ts-node/esm scripts/start-analytics.ts --test",
     "analytics:status": "curl -f http://localhost:3001/api/analytics/health || echo 'Analytics API not available'",
+    "startup": "bash scripts/startup.sh",
+    "startup:clean": "bash scripts/startup.sh --clean",
+    "test:integration": "node scripts/test-integration.js",
+    "test:health": "node scripts/test-integration.js --health-only",
     "lint": "echo 'Linting will be implemented per module'",
     "format": "echo 'Formatting will be implemented per module'"
   },
@@ -67,6 +72,7 @@
   },
   "homepage": "https://github.com/your-org/nexus-erp#readme",
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
     "http-proxy-middleware": "^3.0.5",

@@ -6,14 +6,18 @@ const nextConfig: NextConfig = {
   env: {
     CUSTOM_KEY: 'ERP_NEXUS_FRONTEND',
   },
-  // Desabilitar ESLint durante o build para Docker
+  // Configurações de build otimizadas
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
+    dirs: ['src']
   },
-  // Desabilitar TypeScript check durante o build para Docker
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
+  // Configurações de performance
+  swcMinify: true,
+  poweredByHeader: false,
+  generateEtags: false,
   // Configurações para integração com backend - Todas via Gateway
   // Desenvolvimento: usa rewrites para API Gateway
   // Produção: usa URLs relativas (Nginx faz o proxy)
@@ -52,9 +56,19 @@ const nextConfig: NextConfig = {
       ];
     }
     
-    // Para Docker ou quando API_BASE_URL está definida, não usar rewrites
-    console.log('🐳 Docker ou API_BASE_URL definida: Rewrites desabilitados');
-    return [];
+    // Para desenvolvimento com API_BASE_URL definida, ainda precisamos dos rewrites
+    // porque as chamadas do hook são para rotas relativas /api/*
+    console.log('🔧 Desenvolvimento com API_BASE_URL: Habilitando rewrites para gateway');
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${process.env.NEXT_PUBLIC_API_BASE_URL}/:path*`,
+      },
+      {
+        source: '/uploads/:path*',
+        destination: `${process.env.NEXT_PUBLIC_API_BASE_URL}/uploads/:path*`,
+      },
+    ];
   },
 };
 
