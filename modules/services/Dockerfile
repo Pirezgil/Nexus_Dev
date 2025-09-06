@@ -6,14 +6,17 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 WORKDIR /app
 
-# Copiar arquivos de dependências (melhor caching)
-COPY package.json package-lock.json* ./
+# Copiar arquivos de dependências do módulo
+COPY modules/services/package.json modules/services/package-lock.json* ./
 
 # Instalar dependências
 RUN npm install
 
-# Copiar código fonte
-COPY . .
+# Copiar diretório shared (necessário para compilação)
+COPY shared ./shared
+
+# Copiar código fonte do módulo
+COPY modules/services/src/ ./src/
 
 # Gerar Prisma client se prisma estiver configurado
 RUN if [ -f "prisma/schema.prisma" ]; then \
@@ -25,8 +28,8 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
     mkdir -p prisma; \
   fi
 
-# Build TypeScript - forçar compilação mesmo com erros (para produção)
-RUN mkdir -p dist && (npx tsc --noEmitOnError false --skipLibCheck true || echo "Build completed with warnings")
+# Build TypeScript - compilar arquivos diretamente para dist/src/
+RUN mkdir -p dist/src && (npx tsc src/*.ts --outDir dist/src --target es2020 --module commonjs --esModuleInterop --skipLibCheck --noEmitOnError false || echo "Build completed with warnings")
 
 # Stage de produção - imagem mínima e segura
 FROM node:18-alpine AS production
@@ -79,5 +82,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 # Usar dumb-init para melhor signal handling
 ENTRYPOINT ["dumb-init", "--"]
 
-# Comando de início
-CMD ["node", "dist/app.js"]
+# Comando de início - CORRIGIDO: executar arquivo JavaScript compilado
+CMD ["node", "dist/src/app.js"]

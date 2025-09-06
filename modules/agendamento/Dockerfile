@@ -6,14 +6,17 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 WORKDIR /app
 
-# Copiar arquivos de dependências (melhor caching)
-COPY package.json package-lock.json* ./
+# Copiar arquivos de dependências do módulo
+COPY modules/agendamento/package.json modules/agendamento/package-lock.json* ./
 
 # Instalar dependências
 RUN npm install
 
-# Copiar código fonte
-COPY . .
+# Copiar diretório shared (necessário para compilação)
+COPY shared ./shared
+
+# Copiar código fonte do módulo
+COPY modules/agendamento/src/ ./src/
 
 # Gerar Prisma client se prisma estiver configurado
 RUN if [ -f "prisma/schema.prisma" ]; then \
@@ -25,8 +28,13 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
     mkdir -p prisma; \
   fi
 
-# Build TypeScript - forçar compilação mesmo com erros (para produção)
-RUN mkdir -p dist && (npx tsc --noEmitOnError false --skipLibCheck true || echo "Build completed with warnings")
+# Build TypeScript - compilar arquivos diretamente para dist/src/
+# ATENÇÃO: Se ocorrer TransformError durante o build, investigar:
+# 1. tsconfig.json - configurações conflitantes com dependências
+# 2. package.json - versões incompatíveis de Jest, Babel, TS-Node
+# 3. Dependências que alteram transformações do TypeScript
+# 4. Conflitos entre @types/* e implementações reais
+RUN mkdir -p dist/src && (npx tsc src/*.ts --outDir dist/src --target es2020 --module commonjs --esModuleInterop --skipLibCheck --noEmitOnError false || echo "Build completed with warnings")
 
 # Stage de produção - imagem mínima e segura
 FROM node:18-alpine AS production
@@ -62,6 +70,9 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
 # Copiar arquivos compilados com ownership correto
 COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
 
+# Criar diretórios necessários e alterar ownership ANTES de mudar para usuário non-root
+RUN mkdir -p logs uploads && chown -R appuser:appgroup logs uploads
+
 # Alternar para usuário non-root
 USER appuser
 
@@ -80,4 +91,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["dumb-init", "--"]
 
 # Comando de início
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/src/app.js"]
