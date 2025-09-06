@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import customerRoutesNoAuth from './customerRoutesNoAuth';
+import customerRoutesNoAuth from './customerRoutes';
 import healthRoutes from './healthRoutes';
 import statsRoutes from './statsRoutes';
 

@@ -179,7 +179,6 @@ services:
       dockerfile: ./modules/agendamento/Dockerfile
     container_name: nexus-agendamento
     restart: unless-stopped
-    command: npm run dev
     ports:
       - "5008:3000"
     environment:

@@ -18,6 +18,9 @@ COPY shared ./shared
 # Copiar código fonte do módulo
 COPY modules/agendamento/src/ ./src/
 
+# Copiar schema do Prisma (necessário para gerar client)
+COPY modules/agendamento/prisma/ ./prisma/
+
 # Gerar Prisma client se prisma estiver configurado
 RUN if [ -f "prisma/schema.prisma" ]; then \
     echo "Generating Prisma client..."; \
@@ -77,7 +80,7 @@ RUN mkdir -p logs uploads && chown -R appuser:appgroup logs uploads
 USER appuser
 
 # Configurar ambiente
-ENV NODE_ENV=production
+ENV NODE_ENV=development
 ENV NODE_OPTIONS="--max-old-space-size=256"
 
 # Expor porta

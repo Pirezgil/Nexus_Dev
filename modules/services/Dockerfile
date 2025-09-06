@@ -18,6 +18,9 @@ COPY shared ./shared
 # Copiar código fonte do módulo
 COPY modules/services/src/ ./src/
 
+# Copiar schema do Prisma (necessário para gerar client)
+COPY modules/services/prisma/ ./prisma/
+
 # Gerar Prisma client se prisma estiver configurado
 RUN if [ -f "prisma/schema.prisma" ]; then \
     echo "Generating Prisma client..."; \
@@ -64,6 +67,9 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
 
 # Copiar arquivos compilados com ownership correto
 COPY --from=builder --chown=appuser:appgroup /app/dist ./dist
+
+# Criar diretórios necessários e alterar ownership ANTES de mudar para usuário non-root
+RUN mkdir -p logs uploads && chown -R appuser:appgroup logs uploads
 
 # Alternar para usuário non-root
 USER appuser
