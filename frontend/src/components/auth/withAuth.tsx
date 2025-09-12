@@ -35,48 +35,61 @@ export function withAuth<T extends object>(
     const { 
       user, 
       isAuthenticated, 
-      isLoading, 
-      initialize 
+      isLoading,
+      status,
+      isInitialized
     } = useAuthStore();
 
-    const [mounting, setMounting] = React.useState(true);
-
-    // Inicializar autenticação na primeira renderização
+    // Enhanced authentication check with proper error handling and SSR safety
     useEffect(() => {
-      const initAuth = async () => {
-        await initialize();
-        setMounting(false);
-      };
-      initAuth();
-    }, [initialize]);
+      if (!isInitialized) return; // Wait for initialization
 
-    // Redirecionar se não autenticado
-    useEffect(() => {
-      console.log('🔍 withAuth check:', { mounting, isLoading, isAuthenticated, user: user?.email });
+      // SSR SAFETY FIX: Check for window availability
+      if (typeof window === 'undefined') return;
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔍 withAuth check:', { 
+          isInitialized, 
+          status, 
+          isLoading, 
+          isAuthenticated, 
+          user: user?.email,
+          pathname: window.location.pathname
+        });
+      }
       
-      if (!mounting && !isLoading && !isAuthenticated && redirectToLogin) {
-        console.log('❌ Redirecting to login - not authenticated');
-        router.push('/login');
+      // Only redirect if not authenticated and redirectToLogin is true
+      if (!isLoading && !isAuthenticated && redirectToLogin) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log('❌ withAuth: Redirecting to login - not authenticated');
+        }
+        
+        // Store current path for redirect after login
+        const currentPath = window.location.pathname;
+        if (currentPath !== '/login' && currentPath !== '/') {
+          sessionStorage.setItem('redirectAfterLogin', currentPath);
+        }
+        
+        router.replace('/login');
       }
-    }, [mounting, isAuthenticated, isLoading, router, redirectToLogin, user]);
+    }, [isInitialized, isAuthenticated, isLoading, router, redirectToLogin, user, status]);
 
-    // Verificar permissões de role
+    // Enhanced role-based access control
     useEffect(() => {
-      if (
-        !mounting &&
-        !isLoading && 
-        isAuthenticated && 
-        user && 
-        requiredRoles && 
-        !requiredRoles.includes(user.role)
-      ) {
-        console.warn(`Access denied. Required roles: ${requiredRoles.join(', ')}, user role: ${user.role}`);
-        router.push('/unauthorized');
+      if (!isInitialized || isLoading || !isAuthenticated) return;
+      
+      if (user && requiredRoles && requiredRoles.length > 0) {
+        const hasRequiredRole = requiredRoles.includes(user.role);
+        
+        if (!hasRequiredRole) {
+          console.warn(`Access denied. Required roles: ${requiredRoles.join(', ')}, user role: ${user.role}`);
+          router.replace('/unauthorized');
+        }
       }
-    }, [mounting, isAuthenticated, isLoading, user, router, requiredRoles]);
+    }, [isInitialized, isAuthenticated, isLoading, user, router, requiredRoles]);
 
-    // Mostrar loading durante verificação
-    if (mounting || isLoading) {
+    // Show loading screen only during critical loading states
+    if (!isInitialized || (isLoading && status === 'initializing')) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
           <div className="text-center space-y-4">

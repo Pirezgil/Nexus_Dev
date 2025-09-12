@@ -15,20 +15,14 @@ import { customColors } from '@/components/ui';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { isAuthenticated, initialize } = useAuthStore();
+  const { isAuthenticated } = useAuthStore();
 
   useEffect(() => {
-    // Inicializar store na primeira renderização
-    const initAuth = async () => {
-      await initialize();
-    };
-    initAuth();
-  }, [initialize]);
-
-  useEffect(() => {
+    console.log('🔄 LoginPage useEffect:', { isAuthenticated, status: useAuthStore.getState().status });
     // Se já estiver logado, redirecionar para dashboard
     if (isAuthenticated) {
-      router.push('/dashboard');
+      console.log('✅ LoginPage: User already authenticated, redirecting to dashboard');
+      router.replace('/dashboard');
     }
   }, [isAuthenticated, router]);
 

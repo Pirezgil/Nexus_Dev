@@ -1,11 +1,9 @@
-// Temporary index file to fix build issues
+// UI Components Index
 export { Button } from './button';
 export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './dialog';
 export { Input } from './input';
 export { LoadingSpinner } from './loading-spinner';
 export { KPICard } from './kpi-card';
-
-// Import from other components
 export { Alert } from './alert';
 export { Select } from './select';
 export { DataTable } from './data-table';

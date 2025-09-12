@@ -34,7 +34,7 @@ export class CustomerService {
     pagination: PaginationQuery
   ): Promise<PaginatedResponse<CustomerSummary>> {
     try {
-      const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
+      const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
       const skip = (page - 1) * limit;
 
       // Build where clause
@@ -253,6 +253,8 @@ export class CustomerService {
    */
   async createCustomer(data: CreateCustomerData, companyId: string, createdBy: string): Promise<CustomerDetails> {
     try {
+      console.log('DEBUG [CustomerServiceExpanded]: Creating customer with data:', JSON.stringify(data, null, 2));
+
       // Check for duplicates
       if (data.email) {
         const existingByEmail = await prisma.customer.findFirst({
@@ -272,14 +274,56 @@ export class CustomerService {
         }
       }
 
+      // Build prisma data with proper address mapping
+      const prismaData: any = {
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        cpfCnpj: data.document,
+        status: data.status || 'PROSPECT',
+        tags: data.tags || [],
+        companyId,
+        createdBy,
+        // Ensure first visit is set if this customer has services
+        firstVisit: data.firstVisit || new Date()
+      };
+
+      // Handle address mapping - support both structured and legacy formats
+      if (data.addressStructured) {
+        // New structured format from frontend
+        console.log('DEBUG [CustomerServiceExpanded]: Processing structured address:', data.addressStructured);
+        prismaData.addressStreet = data.addressStructured.street;
+        prismaData.addressNumber = data.addressStructured.number;
+        prismaData.addressComplement = data.addressStructured.complement;
+        prismaData.addressNeighborhood = data.addressStructured.neighborhood;
+        prismaData.addressCity = data.addressStructured.city;
+        prismaData.addressState = data.addressStructured.state;
+        prismaData.addressZipcode = data.addressStructured.zipcode;
+        prismaData.addressCountry = data.addressStructured.country;
+      } else {
+        // Legacy format
+        prismaData.address = data.address;
+        prismaData.city = data.city;
+        prismaData.state = data.state;
+        prismaData.zipCode = data.zipCode;
+        prismaData.country = data.country;
+      }
+
+      // Map additional fields
+      if (data.profession) prismaData.profession = data.profession;
+      if (data.source) prismaData.source = data.source;
+      if (data.preferredContact) prismaData.preferredContact = data.preferredContact;
+      if (data.marketingConsent !== undefined) prismaData.marketingConsent = data.marketingConsent;
+      if (data.secondaryPhone) prismaData.secondaryPhone = data.secondaryPhone;
+      if (data.rg) prismaData.rg = data.rg;
+      if (data.birthDate) prismaData.birthDate = data.birthDate;
+      if (data.gender) prismaData.gender = data.gender;
+      if (data.maritalStatus) prismaData.maritalStatus = data.maritalStatus;
+
+      console.log('DEBUG [CustomerServiceExpanded]: Final prisma data:', JSON.stringify(prismaData, null, 2));
+
       const customer = await prisma.customer.create({
-        data: {
-          ...data,
-          companyId,
-          createdBy,
-          // Ensure first visit is set if this customer has services
-          firstVisit: data.firstVisit || new Date()
-        },
+        data: prismaData,
         include: {
           customerNotes: true,
           interactions: true,

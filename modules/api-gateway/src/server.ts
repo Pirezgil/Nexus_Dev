@@ -6,8 +6,10 @@ import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 
 import { authRoutes } from './routes/auth';
+import { usersRoutes } from './routes/users';
 import { crmRoutes } from './routes/crm';
 import { servicesRoutes } from './routes/services';
+import { notificationsRoutes } from './routes/notifications';
 import { agendamentoRoutes } from './routes/agendamento';
 import { analyticsRoutes } from './routes/analytics';
 import { authMiddleware } from './middleware/auth';
@@ -52,8 +54,8 @@ app.use(compression({
 
 // Parse JSON with size limit - SKIP for proxy routes to prevent body consumption
 app.use((req, res, next) => {
-  // Skip body parsing for services routes (handled by proxy)
-  if (req.path.startsWith('/api/services')) {
+  // Skip body parsing for proxy routes (handled by proxy middleware)
+  if (req.path.startsWith('/api/services') || req.path.startsWith('/api/notifications')) {
     return next();
   }
   
@@ -66,8 +68,8 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-  // Skip body parsing for services routes (handled by proxy)
-  if (req.path.startsWith('/api/services')) {
+  // Skip body parsing for proxy routes (handled by proxy middleware)
+  if (req.path.startsWith('/api/services') || req.path.startsWith('/api/notifications')) {
     return next();
   }
   
@@ -154,9 +156,12 @@ app.get('/ping', (_req: Request, res: Response) => {
 app.use('/api/auth', authRoutes);
 
 // ==== PROTECTED ROUTES (Require Authentication) ====
-// Services routes handle authentication via proxy middleware (see routes/services.ts)
+// Services and notifications routes handle authentication via proxy middleware
+app.use('/api/users', authMiddleware, usersRoutes);
 app.use('/api/crm', authMiddleware, crmRoutes);
 app.use('/api/services', servicesRoutes);  // Auth handled in proxy middleware
+app.use('/api/professionals', servicesRoutes);  // Professionals also handled by services module
+app.use('/api/notifications', notificationsRoutes);  // Auth handled in proxy middleware
 app.use('/api/agendamento', authMiddleware, agendamentoRoutes);
 app.use('/api/analytics', authMiddleware, analyticsRoutes);
 
@@ -246,8 +251,11 @@ app.use('*', (req: Request, res: Response) => {
       'GET /health - Health check',
       'GET /ping - Gateway status',
       'POST /api/auth/* - Authentication routes',
+      'GET|POST|PUT|DELETE /api/users/* - User management routes (auth required)',
       'GET|POST|PUT|DELETE /api/crm/* - CRM routes (auth required)',
       'GET|POST|PUT|DELETE /api/services/* - Services routes (auth required)',
+      'GET|POST|PUT|DELETE /api/professionals/* - Professionals routes (auth required)',
+      'GET|POST|PUT|DELETE /api/notifications/* - Notifications routes (auth required)',
       'GET|POST|PUT|DELETE /api/agendamento/* - Scheduling routes (auth required)',
       'GET /api/analytics/* - Analytics routes (auth required)'
     ]
@@ -273,6 +281,7 @@ app.listen(Number(PORT), '0.0.0.0', () => {
       userManagement: process.env.USER_MANAGEMENT_URL || 'http://nexus-user-management:3000',
       crm: process.env.CRM_URL || 'http://nexus-crm:3000',
       services: process.env.SERVICES_URL || 'http://nexus-services:3000',
+      notifications: process.env.NOTIFICATIONS_URL || 'http://nexus-notifications:5006',
       agendamento: process.env.AGENDAMENTO_URL || 'http://nexus-agendamento:3000'
     }
   });
@@ -281,8 +290,11 @@ app.listen(Number(PORT), '0.0.0.0', () => {
   console.log(`📍 Available routes:`);
   console.log(`   - /health → Health check`);
   console.log(`   - /api/auth/* → User Management (${process.env.USER_MANAGEMENT_URL || 'http://nexus-user-management:3000'})`);
+  console.log(`   - /api/users/* → User Management (${process.env.USER_MANAGEMENT_URL || 'http://nexus-user-management:3000'})`);
   console.log(`   - /api/crm/* → CRM (${process.env.CRM_URL || 'http://nexus-crm:3000'})`);
   console.log(`   - /api/services/* → Services (${process.env.SERVICES_URL || 'http://nexus-services:3000'})`);
+  console.log(`   - /api/professionals/* → Services (${process.env.SERVICES_URL || 'http://nexus-services:3000'})`);
+  console.log(`   - /api/notifications/* → Notifications (${process.env.NOTIFICATIONS_URL || 'http://nexus-notifications:5006'})`);
   console.log(`   - /api/agendamento/* → Agendamento (${process.env.AGENDAMENTO_URL || 'http://nexus-agendamento:3000'})`);
 });
 

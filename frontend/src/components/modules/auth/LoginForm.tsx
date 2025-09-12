@@ -60,7 +60,11 @@ export const LoginForm: React.FC<LoginFormProps> = ({ className }) => {
       setGeneralError(''); // ✅ CORRIGIDO: Limpar erro geral
       await login(data);
       success('Login realizado', 'Bem-vindo ao ERP Nexus!');
-      router.push('/dashboard');
+      
+      // Forçar redirecionamento imediato após login
+      setTimeout(() => {
+        router.push('/dashboard');
+      }, 100);
     } catch (err: any) {
       console.error('Login error:', err);
       
@@ -167,8 +171,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({ className }) => {
         </div>
       </form>
 
-      {/* ✅ CORRIGIDO: Demo credentials usando cores do Design System */}
-      {process.env.NODE_ENV === 'development' && (
+      {/* SECURITY FIX: Only show demo credentials in development AND when explicitly enabled */}
+      {process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS === 'true' && (
         <div 
           className="rounded-lg border p-4"
           style={{ 
@@ -180,7 +184,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ className }) => {
             className="text-xs mb-2 font-medium"
             style={{ color: customColors.textSecondary }}
           >
-            💡 Credenciais de Teste:
+            💡 Credenciais de Teste (Desenvolvimento):
           </p>
           <div 
             className="text-xs space-y-1"

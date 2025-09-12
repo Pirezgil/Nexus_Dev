@@ -8,13 +8,42 @@ import {
   PaginatedResponse,
   PaginationQuery,
   NotFoundError,
-  ConflictError
+  ConflictError,
+  CustomerStatus
 } from '../types';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { redis } from '../utils/redis';
+import { notificationClient } from './notificationClient';
 
 export class CustomerService {
+  /**
+   * Check if document already exists
+   */
+  async checkDocumentExists(document: string, companyId: string, excludeId?: string): Promise<boolean> {
+    try {
+      const where: Prisma.CustomerWhereInput = {
+        companyId,
+        cpfCnpj: document,
+      };
+
+      // Exclude specific customer ID (for editing)
+      if (excludeId) {
+        where.id = { not: excludeId };
+      }
+
+      const existing = await prisma.customer.findFirst({
+        where,
+        select: { id: true },
+      });
+
+      return !!existing;
+    } catch (error) {
+      logger.error('Error checking document existence', { error, document, companyId });
+      throw error;
+    }
+  }
+
   /**
    * Get paginated list of customers with filters
    */
@@ -24,7 +53,7 @@ export class CustomerService {
     pagination: PaginationQuery
   ): Promise<PaginatedResponse<CustomerSummary>> {
     try {
-      const { page = 1, limit = 10, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
+      const { page = 1, limit = 20, sortBy = 'createdAt', sortOrder = 'desc' } = pagination;
       const skip = (page - 1) * limit;
 
       // Build where clause
@@ -38,12 +67,12 @@ export class CustomerService {
           { name: { contains: filters.search, mode: 'insensitive' } },
           { email: { contains: filters.search, mode: 'insensitive' } },
           { phone: { contains: filters.search, mode: 'insensitive' } },
-          { document: { contains: filters.search, mode: 'insensitive' } },
+          { cpfCnpj: { contains: filters.search, mode: 'insensitive' } },
         ];
       }
 
       if (filters.status && filters.status.length > 0) {
-        where.status = { in: filters.status };
+        where.status = { in: filters.status as CustomerStatus[] };
       }
 
       if (filters.tags && filters.tags.length > 0) {
@@ -51,11 +80,11 @@ export class CustomerService {
       }
 
       if (filters.city) {
-        where.city = { contains: filters.city, mode: 'insensitive' };
+        where.addressCity = { contains: filters.city, mode: 'insensitive' };
       }
 
       if (filters.state) {
-        where.state = { contains: filters.state, mode: 'insensitive' };
+        where.addressState = { contains: filters.state, mode: 'insensitive' };
       }
 
       if (filters.hasEmail !== undefined) {
@@ -66,12 +95,16 @@ export class CustomerService {
         where.phone = filters.hasPhone ? { not: null } : null;
       }
 
+      // Fix: Properly combine date range filters instead of overwriting
+      const dateFilter: any = {};
       if (filters.createdFrom) {
-        where.createdAt = { ...where.createdAt, gte: filters.createdFrom };
+        dateFilter.gte = filters.createdFrom;
       }
-
       if (filters.createdTo) {
-        where.createdAt = { ...where.createdAt, lte: filters.createdTo };
+        dateFilter.lte = filters.createdTo;
+      }
+      if (Object.keys(dateFilter).length > 0) {
+        where.createdAt = dateFilter;
       }
 
       // Execute queries in parallel
@@ -170,15 +203,15 @@ export class CustomerService {
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        document: customer.document,
-        address: customer.address,
-        city: customer.city,
-        state: customer.state,
-        zipCode: customer.zipCode,
-        country: customer.country,
+        document: customer.cpfCnpj,
+        address: customer.addressStreet,
+        city: customer.addressCity,
+        state: customer.addressState,
+        zipCode: customer.addressZipcode,
+        country: null,
         status: customer.status,
         tags: customer.tags,
-        metadata: customer.metadata,
+        metadata: customer.notes ? JSON.parse(customer.notes) : null,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
         notes: customer.customerNotes,
@@ -211,48 +244,97 @@ export class CustomerService {
       }
 
       if (data.document) {
-        const existingByDocument = await prisma.customer.findFirst({
-          where: { cpfCnpj: data.document, companyId },
-        });
-        if (existingByDocument) {
+        const documentExists = await this.checkDocumentExists(data.document, companyId);
+        if (documentExists) {
           throw new ConflictError('Cliente com este documento já existe');
         }
       }
 
       // Map API fields to Prisma schema fields
-      const prismaData = {
+      const prismaData: any = {
         name: data.name,
-        email: data.email,
-        phone: data.phone,
-        cpfCnpj: data.document, // API 'document' -> Prisma 'cpfCnpj'
-        addressStreet: data.address, // API 'address' -> Prisma 'addressStreet'
-        addressCity: data.city,
-        addressState: data.state,
-        addressZipcode: data.zipCode, // API 'zipCode' -> Prisma 'addressZipcode'
-        status: data.status || 'ACTIVE',
-        tags: data.tags || [],
         companyId,
         createdBy,
+        status: data.status || 'ACTIVE',
+        tags: data.tags || [],
       };
+
+      // Handle address mapping - support both structured and legacy formats
+      console.log('DEBUG: Data received:', JSON.stringify(data, null, 2));
+      
+      if (data.addressStructured) {
+        // New structured format from frontend
+        console.log('DEBUG: Processing structured address:', data.addressStructured);
+        if (data.addressStructured.street) prismaData.addressStreet = data.addressStructured.street;
+        if (data.addressStructured.number) prismaData.addressNumber = data.addressStructured.number;
+        if (data.addressStructured.complement) prismaData.addressComplement = data.addressStructured.complement;
+        if (data.addressStructured.neighborhood) prismaData.addressNeighborhood = data.addressStructured.neighborhood;
+        if (data.addressStructured.city) prismaData.addressCity = data.addressStructured.city;
+        if (data.addressStructured.state) prismaData.addressState = data.addressStructured.state;
+        if (data.addressStructured.zipcode) prismaData.addressZipcode = data.addressStructured.zipcode;
+        if (data.addressStructured.country) prismaData.addressCountry = data.addressStructured.country;
+      } else {
+        // Legacy flat format for compatibility
+        console.log('DEBUG: Processing legacy address format');
+        if (data.address) prismaData.addressStreet = data.address;
+        if (data.city) prismaData.addressCity = data.city;
+        if (data.state) prismaData.addressState = data.state;
+        if (data.zipCode) prismaData.addressZipcode = data.zipCode;
+        if (data.country) prismaData.addressCountry = data.country;
+      }
+      
+      console.log('DEBUG: Final prismaData:', JSON.stringify(prismaData, null, 2));
+
+      // Only include fields that are provided
+      if (data.email) prismaData.email = data.email;
+      if (data.phone) prismaData.phone = data.phone;
+      if (data.document) prismaData.cpfCnpj = data.document;
+      if (data.secondaryPhone) prismaData.secondaryPhone = data.secondaryPhone;
+      if (data.rg) prismaData.rg = data.rg;
+      if (data.metadata) prismaData.notes = JSON.stringify(data.metadata);
+      
+      // Additional fields
+      if (data.profession) prismaData.profession = data.profession;
+      if (data.source) prismaData.source = data.source;
+      if (data.preferredContact) prismaData.preferredContact = data.preferredContact;
+      if (data.marketingConsent !== undefined) prismaData.marketingConsent = data.marketingConsent;
+      if (data.birthDate) prismaData.birthDate = new Date(data.birthDate);
+      if (data.gender) prismaData.gender = data.gender;
+      if (data.maritalStatus) prismaData.maritalStatus = data.maritalStatus;
 
       // Create customer with proper field mapping
       const customer = await prisma.customer.create({
         data: prismaData,
       });
 
-      // Temporarily disabled for timeout diagnosis - potential deadlock
-      // await prisma.customerInteraction.create({
-      //   data: {
-      //     customerId: customer.id,
-      //     companyId,
-      //     type: 'NOTE',
-      //     title: 'Cliente cadastrado',
-      //     description: 'Cliente cadastrado no sistema',
-      //     createdBy,
-      //   },
-      // });
+      // Create initial interaction
+      await prisma.customerInteraction.create({
+        data: {
+          customerId: customer.id,
+          companyId,
+          type: 'NOTE',
+          title: 'Cliente cadastrado',
+          description: 'Cliente cadastrado no sistema',
+          createdBy,
+        },
+      });
 
       logger.info('Customer created', { customerId: customer.id, companyId, createdBy });
+
+      // Send notification about new customer
+      try {
+        await notificationClient.notifyCustomerCreated(
+          companyId,
+          createdBy,
+          customer.name,
+          customer.id
+        );
+      } catch (notificationError) {
+        logger.warn('Failed to send customer creation notification', {
+          customerId: customer.id,
+          error: notificationError
+        });
+      }
 
       // Invalidate related caches
       await this.invalidateCustomerCaches(customer.id, companyId);
@@ -264,19 +346,19 @@ export class CustomerService {
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        document: customer.cpfCnpj, // Prisma 'cpfCnpj' -> API 'document'
-        address: customer.addressStreet, // Prisma 'addressStreet' -> API 'address'
+        document: customer.cpfCnpj,
+        address: customer.addressStreet,
         city: customer.addressCity,
         state: customer.addressState,
-        zipCode: customer.addressZipcode, // Prisma 'addressZipcode' -> API 'zipCode'
-        country: null, // Not available in current schema
+        zipCode: customer.addressZipcode,
+        country: null,
         status: customer.status,
         tags: customer.tags,
-        metadata: null, // Not available in current schema
+        metadata: customer.notes ? JSON.parse(customer.notes) : null,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
-        notes: [], // Empty array since include was removed
-        interactions: [], // Empty array since include was removed
+        notes: [],
+        interactions: [],
       };
     } catch (error) {
       logger.error('Error creating customer', { error, data, companyId });
@@ -313,22 +395,34 @@ export class CustomerService {
         }
       }
 
-      if (data.document && data.document !== existingCustomer.document) {
+      if (data.document && data.document !== existingCustomer.cpfCnpj) {
         const existingByDocument = await prisma.customer.findFirst({
-          where: { document: data.document, companyId, id: { not: customerId } },
+          where: { cpfCnpj: data.document, companyId, id: { not: customerId } },
         });
         if (existingByDocument) {
           throw new ConflictError('Cliente com este documento já existe');
         }
       }
 
+      // Map API fields to Prisma schema fields
+      const updateData: any = { updatedBy };
+      
+      if (data.name !== undefined) updateData.name = data.name;
+      if (data.email !== undefined) updateData.email = data.email;
+      if (data.phone !== undefined) updateData.phone = data.phone;
+      if (data.document !== undefined) updateData.cpfCnpj = data.document;
+      if (data.address !== undefined) updateData.addressStreet = data.address;
+      if (data.city !== undefined) updateData.addressCity = data.city;
+      if (data.state !== undefined) updateData.addressState = data.state;
+      if (data.zipCode !== undefined) updateData.addressZipcode = data.zipCode;
+      if (data.status !== undefined) updateData.status = data.status;
+      if (data.tags !== undefined) updateData.tags = data.tags;
+      if (data.metadata !== undefined) updateData.notes = JSON.stringify(data.metadata);
+
       // Update customer
       const customer = await prisma.customer.update({
         where: { id: customerId },
-        data: {
-          ...data,
-          updatedBy,
-        },
+        data: updateData,
         include: {
           customerNotes: {
             orderBy: { createdAt: 'desc' },
@@ -353,6 +447,23 @@ export class CustomerService {
 
       logger.info('Customer updated', { customerId, companyId, updatedBy, changes: data });
 
+      // Send notification about customer update
+      try {
+        const changedFields = Object.keys(data).filter(key => data[key as keyof UpdateCustomerData] !== undefined);
+        await notificationClient.notifyCustomerUpdated(
+          companyId,
+          updatedBy,
+          customer.name,
+          customerId,
+          changedFields
+        );
+      } catch (notificationError) {
+        logger.warn('Failed to send customer update notification', {
+          customerId,
+          error: notificationError
+        });
+      }
+
       // Invalidate caches
       await this.invalidateCustomerCaches(customerId, companyId);
 
@@ -362,15 +473,15 @@ export class CustomerService {
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        document: customer.document,
-        address: customer.address,
-        city: customer.city,
-        state: customer.state,
-        zipCode: customer.zipCode,
-        country: customer.country,
+        document: customer.cpfCnpj,
+        address: customer.addressStreet,
+        city: customer.addressCity,
+        state: customer.addressState,
+        zipCode: customer.addressZipcode,
+        country: null,
         status: customer.status,
         tags: customer.tags,
-        metadata: customer.metadata,
+        metadata: customer.notes ? JSON.parse(customer.notes) : null,
         createdAt: customer.createdAt,
         updatedAt: customer.updatedAt,
         notes: customer.customerNotes,
@@ -383,31 +494,143 @@ export class CustomerService {
   }
 
   /**
-   * Delete customer
+   * Delete customer with enhanced error handling and audit logging
    */
   async deleteCustomer(customerId: string, companyId: string, deletedBy: string): Promise<void> {
+    // Start audit logging
+    const auditContext = {
+      operation: 'DELETE_CUSTOMER',
+      customerId,
+      companyId,
+      deletedBy,
+      timestamp: new Date().toISOString(),
+      userAgent: process.env.USER_AGENT || 'crm-service',
+    };
+
+    logger.info('Customer deletion attempt started', auditContext);
+
     try {
-      // Check if customer exists and belongs to company
+      // Enhanced validation: Check UUID format
+      if (!this.isValidUUID(customerId)) {
+        const error = new Error('ID do cliente possui formato inválido');
+        logger.warn('Customer deletion failed: invalid UUID format', {
+          ...auditContext,
+          error: error.message,
+          providedId: customerId
+        });
+        throw new ValidationError('ID do cliente possui formato inválido', {
+          customerId: ['Formato de UUID inválido']
+        });
+      }
+
+      // Check if customer exists and belongs to company with detailed context
       const existingCustomer = await prisma.customer.findFirst({
         where: { id: customerId, companyId },
+        include: {
+          _count: {
+            select: {
+              customerNotes: true,
+              interactions: true,
+            }
+          }
+        }
       });
 
       if (!existingCustomer) {
-        throw new NotFoundError('Cliente não encontrado');
+        // Enhanced 404 error with detailed context
+        const errorMessage = 'Cliente não encontrado ou não pertence à empresa';
+        const errorDetails = {
+          reason: 'CUSTOMER_NOT_FOUND',
+          customerId,
+          companyId,
+          suggestions: [
+            'Verifique se o ID do cliente está correto',
+            'Confirme se o cliente pertence à sua empresa',
+            'O cliente pode ter sido excluído anteriormente'
+          ]
+        };
+        
+        logger.warn('Customer deletion failed: customer not found', {
+          ...auditContext,
+          error: errorMessage,
+          details: errorDetails
+        });
+        
+        const notFoundError = new NotFoundError(errorMessage);
+        (notFoundError as any).details = errorDetails;
+        throw notFoundError;
       }
+
+      // Check for business rules that might prevent deletion
+      const relatedDataCount = existingCustomer._count.customerNotes + existingCustomer._count.interactions;
+      
+      // Log customer details before deletion for audit
+      logger.info('Customer deletion: target customer details', {
+        ...auditContext,
+        customerName: existingCustomer.name,
+        customerEmail: existingCustomer.email,
+        customerStatus: existingCustomer.status,
+        relatedNotesCount: existingCustomer._count.customerNotes,
+        relatedInteractionsCount: existingCustomer._count.interactions,
+        totalRelatedData: relatedDataCount
+      });
 
       // Delete customer (cascade will handle notes and interactions)
       await prisma.customer.delete({
         where: { id: customerId },
       });
 
-      logger.info('Customer deleted', { customerId, companyId, deletedBy });
+      logger.info('Customer deleted successfully', {
+        ...auditContext,
+        customerName: existingCustomer.name,
+        deletedDataCount: relatedDataCount,
+        status: 'SUCCESS'
+      });
+
+      // Send notification about customer deletion
+      try {
+        await notificationClient.notifyCustomerDeleted(
+          companyId,
+          deletedBy,
+          existingCustomer.name,
+          customerId
+        );
+        logger.debug('Customer deletion notification sent', auditContext);
+      } catch (notificationError) {
+        logger.warn('Failed to send customer deletion notification', {
+          ...auditContext,
+          notificationError: notificationError instanceof Error ? notificationError.message : notificationError
+        });
+      }
 
       // Invalidate caches
       await this.invalidateCustomerCaches(customerId, companyId);
+      logger.debug('Customer caches invalidated', auditContext);
+      
     } catch (error) {
-      logger.error('Error deleting customer', { error, customerId, companyId });
-      throw error;
+      // Enhanced error logging with full context
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      
+      logger.error('Customer deletion failed', {
+        ...auditContext,
+        error: errorMessage,
+        errorStack,
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        status: 'FAILED'
+      });
+      
+      // Re-throw with enhanced context if it's our custom error
+      if (error instanceof AppError) {
+        throw error;
+      }
+      
+      // Wrap unexpected errors with proper context
+      throw new AppError(
+        'Erro interno durante a exclusão do cliente',
+        500,
+        false // Not operational - indicates a system issue
+      );
     }
   }
 
@@ -427,7 +650,7 @@ export class CustomerService {
             { name: { contains: searchTerm, mode: 'insensitive' } },
             { email: { contains: searchTerm, mode: 'insensitive' } },
             { phone: { contains: searchTerm, mode: 'insensitive' } },
-            { document: { contains: searchTerm, mode: 'insensitive' } },
+            { cpfCnpj: { contains: searchTerm, mode: 'insensitive' } },
           ],
         },
         include: {
@@ -625,6 +848,14 @@ export class CustomerService {
       logger.error('Error getting customer history', { error, customerId, companyId });
       throw error;
     }
+  }
+
+  /**
+   * Validate UUID format
+   */
+  private isValidUUID(uuid: string): boolean {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(uuid);
   }
 
   /**

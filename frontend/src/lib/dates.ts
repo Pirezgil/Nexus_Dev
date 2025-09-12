@@ -218,3 +218,48 @@ export function toEndOfDayISO(isoString: string): string {
     return '';
   }
 }
+
+/**
+ * Calcula dias desde uma data específica
+ * @param isoString - String ISO 8601
+ * @returns Número de dias desde a data
+ */
+export function getDaysSince(isoString: string): number {
+  if (!isoString) return 0;
+  
+  try {
+    const date = parseISO(isoString);
+    if (!isValid(date)) return 0;
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Formata data de forma relativa simplificada (hoje, ontem, há X dias)
+ * @param isoString - String ISO 8601
+ * @returns String formatada de forma relativa
+ */
+export function formatRelativeTime(isoString: string): string {
+  if (!isoString) return '';
+  
+  try {
+    const date = parseISO(isoString);
+    if (!isValid(date)) return '';
+    
+    const diffInHours = Math.abs(Date.now() - date.getTime()) / (1000 * 60 * 60);
+    
+    if (diffInHours < 24) {
+      return formatTime(isoString);
+    } else if (diffInHours < 24 * 7) {
+      return formatTimeAgo(isoString);
+    } else {
+      return formatDate(isoString);
+    }
+  } catch {
+    return isoString;
+  }
+}

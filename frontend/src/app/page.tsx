@@ -26,13 +26,18 @@ export default function HomePage() {
       isInitialized 
     });
 
-    if (isAuthenticated && status === 'authenticated') {
-      console.log('✅ HomePage: Usuário autenticado, redirecionando para dashboard');
-      router.replace('/dashboard');
-    } else if (!isAuthenticated && status === 'unauthenticated') {
-      console.log('❌ HomePage: Usuário não autenticado, redirecionando para login');
-      router.replace('/login');
-    }
+    // Delay redirect slightly to prevent flash and ensure smooth UX
+    const redirectTimer = setTimeout(() => {
+      if (isAuthenticated && status === 'authenticated') {
+        console.log('✅ HomePage: Usuário autenticado, redirecionando para dashboard');
+        router.replace('/dashboard');
+      } else if (!isAuthenticated && (status === 'unauthenticated' || status === 'initializing')) {
+        console.log('❌ HomePage: Usuário não autenticado, redirecionando para login');
+        router.replace('/login');
+      }
+    }, 300); // Small delay for smooth transition
+
+    return () => clearTimeout(redirectTimer);
   }, [status, isAuthenticated, isInitialized, router]);
 
   // Loading state enquanto aguarda a inicialização ou redirecionamento

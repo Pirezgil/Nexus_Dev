@@ -1,0 +1,400 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Modelo principal de notificação
+model Notification {
+  id String @id @default(uuid())
+  
+  // Identificação
+  title String
+  message String
+  description String?
+  
+  // Categorização
+  type NotificationType
+  priority NotificationPriority @default(MEDIUM)
+  category String?
+  module String? // CRM, USER_MANAGEMENT, SERVICES, etc.
+  
+  // Conteúdo
+  data Json? // Dados adicionais em JSON
+  templateId String?
+  template NotificationTemplate? @relation(fields: [templateId], references: [id])
+  
+  // Destinatário
+  userId String?
+  userEmail String?
+  companyId String?
+  
+  // Canais de envio
+  channels NotificationChannel[]
+  
+  // Status e controle
+  status NotificationStatus @default(PENDING)
+  scheduledFor DateTime?
+  sentAt DateTime?
+  readAt DateTime?
+  actionTakenAt DateTime?
+  
+  // Tentativas e erros
+  attempts Int @default(0)
+  maxAttempts Int @default(3)
+  lastError String?
+  errorCount Int @default(0)
+  
+  // Ações e links
+  actionUrl String?
+  actionLabel String?
+  actionData Json?
+  
+  // Configurações
+  persistent Boolean @default(false)
+  requireAction Boolean @default(false)
+  expiresAt DateTime?
+  
+  // Metadados
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  
+  // Relacionamentos
+  parent Notification? @relation("NotificationThread", fields: [parentId], references: [id])
+  children Notification[] @relation("NotificationThread")
+  parentId String?
+  
+  deliveries NotificationDelivery[]
+  interactions NotificationInteraction[]
+  
+  @@map("nexus_notifications.notifications")
+}
+
+// Templates de mensagem
+model NotificationTemplate {
+  id String @id @default(uuid())
+  
+  name String
+  description String?
+  
+  // Conteúdo do template
+  titleTemplate String
+  messageTemplate String
+  descriptionTemplate String?
+  
+  // Configurações
+  type NotificationType
+  module String
+  category String?
+  defaultPriority NotificationPriority @default(MEDIUM)
+  
+  // Template engine (mustache, handlebars, etc.)
+  engine String @default("mustache")
+  
+  // Configurações de envio
+  defaultChannels String[] // Array de canais padrão
+  persistent Boolean @default(false)
+  requireAction Boolean @default(false)
+  
+  // Variáveis disponíveis
+  variables Json? // Schema das variáveis esperadas
+  
+  // Status
+  active Boolean @default(true)
+  
+  // Metadados
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  
+  // Relacionamentos
+  notifications Notification[]
+  
+  @@unique([module, name])
+  @@map("nexus_notifications.templates")
+}
+
+// Canais de notificação (in-app, email, sms, push, etc.)
+model NotificationChannel {
+  id String @id @default(uuid())
+  
+  notificationId String
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  
+  // Tipo do canal
+  channel ChannelType
+  
+  // Destinatário específico para este canal
+  recipient String // email, phone, device_token, etc.
+  
+  // Status do canal
+  status ChannelStatus @default(PENDING)
+  sentAt DateTime?
+  deliveredAt DateTime?
+  readAt DateTime?
+  errorMessage String?
+  
+  // Configurações específicas do canal
+  config Json?
+  
+  // Tentativas
+  attempts Int @default(0)
+  maxAttempts Int @default(3)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("nexus_notifications.channels")
+}
+
+// Entregas de notificação (logs)
+model NotificationDelivery {
+  id String @id @default(uuid())
+  
+  notificationId String
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  
+  // Canal usado
+  channel ChannelType
+  recipient String
+  
+  // Status da entrega
+  status DeliveryStatus
+  attemptNumber Int
+  
+  // Detalhes
+  sentAt DateTime @default(now())
+  deliveredAt DateTime?
+  error String?
+  providerResponse Json?
+  
+  // Metadados
+  ipAddress String?
+  userAgent String?
+  deviceInfo Json?
+  
+  createdAt DateTime @default(now())
+  
+  @@map("nexus_notifications.deliveries")
+}
+
+// Interações com notificações
+model NotificationInteraction {
+  id String @id @default(uuid())
+  
+  notificationId String
+  notification Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  
+  // Tipo de interação
+  action InteractionType
+  
+  // Dados da interação
+  userId String?
+  sessionId String?
+  ipAddress String?
+  userAgent String?
+  
+  // Metadados
+  data Json?
+  timestamp DateTime @default(now())
+  
+  @@map("nexus_notifications.interactions")
+}
+
+// Preferências de notificação dos usuários
+model NotificationPreference {
+  id String @id @default(uuid())
+  
+  userId String
+  companyId String?
+  
+  // Configurações por módulo
+  module String?
+  category String?
+  
+  // Canais permitidos
+  enabledChannels ChannelType[]
+  
+  // Configurações de timing
+  quietHoursStart String? // HH:mm format
+  quietHoursEnd String?   // HH:mm format
+  timezone String @default("America/Sao_Paulo")
+  
+  // Configurações de frequência
+  digestMode Boolean @default(false)
+  digestFrequency String? // daily, weekly, etc.
+  
+  // Filtros
+  minPriority NotificationPriority @default(LOW)
+  keywords String[]
+  blockedCategories String[]
+  
+  // Status
+  active Boolean @default(true)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([userId, module, category])
+  @@map("nexus_notifications.preferences")
+}
+
+// Filas de notificação
+model NotificationQueue {
+  id String @id @default(uuid())
+  
+  // Identificação da fila
+  queueName String
+  jobId String
+  
+  // Referência à notificação
+  notificationId String?
+  
+  // Status do job
+  status QueueStatus @default(WAITING)
+  priority Int @default(0)
+  
+  // Dados do job
+  data Json
+  
+  // Timing
+  scheduledFor DateTime?
+  processedAt DateTime?
+  completedAt DateTime?
+  failedAt DateTime?
+  
+  // Tentativas
+  attempts Int @default(0)
+  maxAttempts Int @default(3)
+  
+  // Erro
+  error String?
+  stackTrace String?
+  
+  // Metadados
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([queueName, jobId])
+  @@map("nexus_notifications.queue")
+}
+
+// Analytics de notificações
+model NotificationAnalytics {
+  id String @id @default(uuid())
+  
+  // Período
+  date DateTime @db.Date
+  hour Int?
+  
+  // Dimensões
+  module String?
+  category String?
+  type NotificationType?
+  channel ChannelType?
+  
+  // Métricas
+  sent Int @default(0)
+  delivered Int @default(0)
+  opened Int @default(0)
+  clicked Int @default(0)
+  failed Int @default(0)
+  
+  // Performance
+  avgDeliveryTime Int? // em segundos
+  avgResponseTime Int? // em segundos
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@unique([date, module, category, type, channel])
+  @@map("nexus_notifications.analytics")
+}
+
+// Enums
+
+enum NotificationType {
+  SUCCESS
+  ERROR
+  WARNING
+  INFO
+  CRITICAL
+}
+
+enum NotificationPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum NotificationStatus {
+  PENDING
+  SCHEDULED
+  PROCESSING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  EXPIRED
+  CANCELLED
+}
+
+enum ChannelType {
+  IN_APP      // Notificação in-app
+  EMAIL       // Email
+  SMS         // SMS
+  PUSH        // Push notification
+  WEBHOOK     // Webhook
+  SLACK       // Slack
+  WHATSAPP    // WhatsApp Business
+  TEAMS       // Microsoft Teams
+}
+
+enum ChannelStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  BOUNCED
+  SPAM
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  SPAM
+  CLICKED
+  OPENED
+}
+
+enum InteractionType {
+  VIEW
+  CLICK
+  DISMISS
+  ACTION
+  ARCHIVE
+  DELETE
+  MARK_READ
+  MARK_UNREAD
+}
+
+enum QueueStatus {
+  WAITING
+  ACTIVE
+  COMPLETED
+  FAILED
+  DELAYED
+  PAUSED
+}

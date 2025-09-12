@@ -32,8 +32,12 @@ RUN if [ -f "prisma/schema.prisma" ]; then \
     mkdir -p prisma; \
   fi
 
-# Build TypeScript - CORRIGIDO: compilação padronizada como api-gateway
-RUN mkdir -p dist && (npx tsc --noEmitOnError false --skipLibCheck true || echo "Build completed with warnings")
+# Build TypeScript - FORÇAR ATUALIZAÇÃO DO SCHEMA
+RUN echo "Forçando atualização do schema de paginação..." && \
+    sed -i 's/\.default(20)/.default(1000)/g' src/types/index.ts && \
+    echo "Schema atualizado:" && \
+    grep -A 2 -B 2 "limit.*default" src/types/index.ts && \
+    mkdir -p dist && (npx tsc --noEmitOnError false --skipLibCheck true || echo "Build completed with warnings")
 
 # Stage de produção - imagem mínima e segura
 FROM node:18-alpine AS production

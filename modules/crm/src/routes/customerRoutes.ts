@@ -1,20 +1,25 @@
 import { Router } from 'express';
 import { CustomerController } from '../controllers/customerController';
+import { NoteController } from '../controllers/noteController';
+import { InteractionController } from '../controllers/interactionController';
 
 const router = Router();
 const customerController = new CustomerController();
+const noteController = new NoteController();
+const interactionController = new InteractionController();
 
-// Mock user para desenvolvimento (simula usuário autenticado)
-router.use((req: any, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-  console.log('Body:', req.body);
-  req.user = {
-    userId: 'user-dev-001',
-    companyId: 'company-dev-001',
-    email: 'dev@nexuserp.com'
-  };
-  next();
-});
+// Authentication is handled by API Gateway - no middleware needed here
+
+// Request logging middleware (development only)
+if (process.env.NODE_ENV === 'development') {
+  router.use((req: any, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - User: ${req.user?.userId}`);
+    next();
+  });
+}
+
+// GET /api/customers/check-document - ROTA ESPECÍFICA ANTES DA PARAMETRIZADA
+router.get('/check-document', customerController.checkDocument);
 
 // GET /api/customers/search - ROTA ESPECÍFICA ANTES DA PARAMETRIZADA
 router.get('/search', customerController.searchCustomers);
@@ -45,5 +50,29 @@ router.post('/:id/tags', customerController.addTags);
 
 // DELETE /api/customers/:id/tags
 router.delete('/:id/tags', customerController.removeTags);
+
+// GET /api/customers/:id/notes - Obter notas do cliente
+router.get('/:id/notes', noteController.getNotes);
+
+// GET /api/customers/:id/interactions - Obter interações do cliente
+router.get('/:id/interactions', interactionController.getInteractions);
+
+// GET /api/customers/:id/appointments - Placeholder para agendamentos do cliente
+router.get('/:id/appointments', (req, res) => {
+  const { id } = req.params;
+  console.log(`[${new Date().toISOString()}] GET /api/customers/${id}/appointments - Placeholder endpoint`);
+  
+  res.json({
+    success: true,
+    data: [],
+    message: 'Endpoint de agendamentos em desenvolvimento. Funcionalidade será integrada com o módulo de agendamento.',
+    meta: {
+      total: 0,
+      page: 1,
+      limit: 10,
+      totalPages: 0
+    }
+  });
+});
 
 export default router;

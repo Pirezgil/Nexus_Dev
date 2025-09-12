@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 import { api } from '@/lib/api';
 import { queryKeys, optimisticUpdates, invalidateQueries, cachePresets } from '@/lib/query-client';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/stores/ui';
 import { Address } from '@/types';
 import { addressToAPIPayload, addressFromAPIResponse } from '@/utils/address';
 
@@ -127,15 +127,27 @@ const customersApi = {
     if (filters.search) params.append('search', filters.search);
     if (filters.status) params.append('status', filters.status);
     if (filters.tags?.length) filters.tags.forEach(tag => params.append('tags', tag));
-    if (filters.dateRange?.start) params.append('startDate', filters.dateRange.start);
-    if (filters.dateRange?.end) params.append('endDate', filters.dateRange.end);
+    if (filters.dateRange?.start) params.append('createdFrom', filters.dateRange.start);
+    if (filters.dateRange?.end) params.append('createdTo', filters.dateRange.end);
     if (filters.page) params.append('page', filters.page.toString());
     if (filters.limit) params.append('limit', filters.limit.toString());
     if (filters.sortBy) params.append('sortBy', filters.sortBy);
     if (filters.sortOrder) params.append('sortOrder', filters.sortOrder);
 
-    const response = await api.get(`/api/crm/customers?${params.toString()}`);
-    return response.data.data || response.data;
+    const url = `/api/crm/customers?${params.toString()}`;
+    console.log('🚀 FAZENDO REQUISIÇÃO DE CLIENTES:', url);
+    console.log('📋 Filtros aplicados:', filters);
+    
+    const response = await api.get(url);
+    const result = response.data.data || response.data;
+    
+    console.log('📊 RESPOSTA RECEBIDA:', {
+      total: result.total,
+      count: result.data?.length || result.length,
+      clientes: result.data?.map((c: any) => ({ id: c.id, name: c.name })) || result.map((c: any) => ({ id: c.id, name: c.name }))
+    });
+    
+    return result;
   },
 
   // Get customer by ID with full details
@@ -194,9 +206,58 @@ const customersApi = {
     };
   },
 
-  // Delete customer
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/api/crm/customers/${id}`);
+  // Inactivate customer (change status to INACTIVE)
+  inactivate: async (id: string): Promise<Customer> => {
+    // Basic client-side validation before API call
+    if (!id || typeof id !== 'string') {
+      throw new Error('ID do cliente é obrigatório');
+    }
+    
+    const cleanId = id.trim();
+    if (!cleanId) {
+      throw new Error('ID do cliente não pode estar vazio');
+    }
+    
+    // Flexible ID validation - allow both UUID and custom IDs
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const customIdRegex = /^[a-zA-Z0-9\-_]+$/;
+    
+    const isValidUUID = uuidRegex.test(cleanId);
+    const isValidCustomId = customIdRegex.test(cleanId) && cleanId.length >= 3 && cleanId.length <= 255;
+    
+    if (!isValidUUID && !isValidCustomId) {
+      const error = new Error('ID do cliente possui formato inválido');
+      (error as any).code = 'INVALID_ID_FORMAT';
+      (error as any).suggestions = [
+        'Use formato UUID padrão (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)',
+        'Ou use um ID customizado com letras, números, hífens e underscores (3-255 caracteres)',
+        'Evite caracteres especiais como espaços ou símbolos'
+      ];
+      throw error;
+    }
+    
+    try {
+      const response = await api.post(`/api/crm/customers/${cleanId}/inactivate`);
+      return response.data.data || response.data;
+    } catch (error: any) {
+      // Enhance network and timeout errors
+      if (error?.code === 'ECONNABORTED' || error?.message?.includes('timeout')) {
+        const timeoutError = new Error('A operação demorou mais que o esperado');
+        (timeoutError as any).code = 'TIMEOUT';
+        (timeoutError as any).originalError = error;
+        throw timeoutError;
+      }
+      
+      if (error?.message?.includes('Network Error') || !error?.response) {
+        const networkError = new Error('Erro de conexão com o servidor');
+        (networkError as any).code = 'NETWORK_ERROR';
+        (networkError as any).originalError = error;
+        throw networkError;
+      }
+      
+      // Re-throw API errors as-is (will be handled by the mutation)
+      throw error;
+    }
   },
 
   // Search customers with debounced query
@@ -263,7 +324,9 @@ const customersApi = {
     // List interactions for customer
     list: async (customerId: string): Promise<CustomerInteraction[]> => {
       const response = await api.get(`/api/crm/customers/${customerId}/interactions`);
-      return response.data.data || response.data;
+      // Handle both paginated response format {data: [...], total, page} and direct array format
+      const result = response.data.data || response.data;
+      return Array.isArray(result) ? result : [];
     },
     
     // Create new interaction
@@ -321,7 +384,7 @@ const customersApi = {
   tags: {
     // List all available tags
     listAll: async (): Promise<CustomerTag[]> => {
-      const response = await api.get('/api/crm/tags');
+      const response = await api.get('/api/crm/customers/tags');
       return response.data.data || response.data;
     },
     
@@ -471,6 +534,7 @@ export const useCustomerStats = () => {
 
 export const useCreateCustomer = () => {
   const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
   
   return useMutation({
     mutationFn: customersApi.create,
@@ -493,16 +557,16 @@ export const useCreateCustomer = () => {
       return { optimisticCustomer };
     },
     onSuccess: (data) => {
-      // Invalidate and refetch
+      // Invalidate and force immediate refetch
       invalidateQueries.customers();
       queryClient.invalidateQueries({ queryKey: queryKeys.customers.stats() });
       
+      // Force immediate refetch of customer lists
+      queryClient.refetchQueries({ queryKey: queryKeys.customers.lists() });
+      queryClient.refetchQueries({ queryKey: queryKeys.customers.stats() });
+      
       // Show success toast
-      toast({
-        title: "Cliente criado com sucesso!",
-        description: `${data.name} foi adicionado ao seu CRM.`,
-        variant: "default"
-      });
+      success("Cliente criado com sucesso!", `${data.name} foi adicionado ao seu CRM.`);
     },
     onError: (error, newCustomer, context) => {
       // Rollback optimistic update
@@ -512,12 +576,42 @@ export const useCreateCustomer = () => {
       
       console.error('Failed to create customer:', error);
       
-      // Show error toast
-      toast({
-        title: "Erro ao criar cliente",
-        description: "Não foi possível salvar o cliente. Tente novamente.",
-        variant: "destructive"
+      // Extract error message from backend response with enhanced handling
+      let errorMessage = "Não foi possível salvar o cliente. Tente novamente.";
+      let errorTitle = "Erro ao criar cliente";
+      
+      // Handle specific HTTP status codes
+      const axiosError = error as any;
+      if (axiosError?.response?.status === 409) {
+        errorTitle = "Cliente já existe";
+        errorMessage = axiosError.response.data.message || "Já existe um cliente cadastrado com este documento (CPF/CNPJ).";
+      } else if (axiosError?.response?.status === 400) {
+        errorTitle = "Dados inválidos";
+        errorMessage = axiosError.response.data.message || "Verifique os dados informados e tente novamente.";
+      } else if (axiosError?.response?.status === 401) {
+        errorTitle = "Sem permissão";
+        errorMessage = "Você não tem permissão para criar clientes.";
+      } else if (axiosError?.response?.status === 403) {
+        errorTitle = "Acesso negado";
+        errorMessage = "Sua sessão expirou. Faça login novamente.";
+      } else if (axiosError?.response?.status === 422) {
+        errorTitle = "Erro de validação";
+        errorMessage = axiosError.response.data.message || "Os dados fornecidos são inválidos.";
+      } else if (axiosError?.response?.data?.message) {
+        errorMessage = axiosError.response.data.message;
+      } else if (axiosError?.message) {
+        errorMessage = axiosError.message;
+      }
+      
+      // Log specific error details for debugging
+      console.log('Error details:', {
+        status: axiosError?.response?.status,
+        data: axiosError?.response?.data,
+        message: axiosError?.message
       });
+      
+      // Show error toast with specific title and message
+      showError(errorTitle, errorMessage);
     },
     onSettled: () => {
       // Refetch to ensure cache consistency
@@ -528,6 +622,7 @@ export const useCreateCustomer = () => {
 
 export const useUpdateCustomer = () => {
   const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
   
   return useMutation({
     mutationFn: customersApi.update,
@@ -551,11 +646,7 @@ export const useUpdateCustomer = () => {
       invalidateQueries.customer(variables.id);
       
       // Show success toast
-      toast({
-        title: "Cliente atualizado!",
-        description: `As informações de ${data.name} foram salvas.`,
-        variant: "default"
-      });
+      success("Cliente atualizado!", `As informações de ${data.name} foram salvas.`);
     },
     onError: (error, variables, context) => {
       // Rollback optimistic update
@@ -569,61 +660,65 @@ export const useUpdateCustomer = () => {
       console.error('Failed to update customer:', error);
       
       // Show error toast
-      toast({
-        title: "Erro ao atualizar cliente",
-        description: "Não foi possível salvar as alterações. Tente novamente.",
-        variant: "destructive"
-      });
+      showError("Erro ao atualizar cliente", "Não foi possível salvar as alterações. Tente novamente.");
     },
   });
 };
 
-export const useDeleteCustomer = () => {
+export const useInactivateCustomer = () => {
   const queryClient = useQueryClient();
+  const { success, error: showError } = useToast();
   
   return useMutation({
-    mutationFn: customersApi.delete,
-    onMutate: async (customerId) => {
+    mutationFn: customersApi.inactivate,
+    onMutate: async (id) => {
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: queryKeys.customers.lists() });
+      await queryClient.cancelQueries({ queryKey: queryKeys.customers.detail(id) });
       
       // Snapshot previous value
-      const previousCustomer = queryClient.getQueryData(queryKeys.customers.detail(customerId));
+      const previousCustomer = queryClient.getQueryData(queryKeys.customers.detail(id));
       
-      // Optimistically remove from cache
-      optimisticUpdates.removeCustomer(customerId);
+      // Optimistically update status to INACTIVE
+      if (previousCustomer) {
+        const optimisticCustomer = {
+          ...previousCustomer,
+          status: 'INACTIVE' as const,
+          updatedAt: new Date().toISOString()
+        };
+        queryClient.setQueryData(queryKeys.customers.detail(id), optimisticCustomer);
+      }
       
       return { previousCustomer };
     },
-    onSuccess: (_, customerId) => {
-      // Invalidate and refetch
-      invalidateQueries.customers();
+    onSuccess: (data, variables) => {
+      // Update cache with real data
+      queryClient.setQueryData(queryKeys.customers.detail(variables), data);
+      
+      // Invalidate related queries
+      invalidateQueries.customer(variables);
+      queryClient.invalidateQueries({ queryKey: queryKeys.customers.lists() });
       queryClient.invalidateQueries({ queryKey: queryKeys.customers.stats() });
       
       // Show success toast
-      toast({
-        title: "Cliente removido",
-        description: "O cliente foi removido com sucesso do seu CRM.",
-        variant: "default"
-      });
+      success("Cliente inativado!", `${data.name} foi inativado com sucesso e não aparecerá mais nas listagens ativas.`);
     },
-    onError: (error, customerId, context) => {
+    onError: (error, variables, context) => {
       // Rollback optimistic update
       if (context?.previousCustomer) {
-        optimisticUpdates.addCustomer(context.previousCustomer);
+        queryClient.setQueryData(
+          queryKeys.customers.detail(variables), 
+          context.previousCustomer
+        );
       }
       
-      console.error('Failed to delete customer:', error);
+      console.error('Failed to inactivate customer:', error);
       
       // Show error toast
-      toast({
-        title: "Erro ao remover cliente",
-        description: "Não foi possível remover o cliente. Tente novamente.",
-        variant: "destructive"
-      });
+      showError("Erro ao inativar cliente", "Não foi possível inativar o cliente. Tente novamente.");
     },
   });
 };
+
 
 // ========== NOTES MUTATION HOOKS ==========
 
@@ -794,12 +889,24 @@ export const useCustomerComplete = (id: string) => {
   const interactions = useCustomerInteractions(id);
   const appointments = useCustomerAppointments(id);
   
+  // Helper function to check if error is just a 404 (resource doesn't exist)
+  const is404Error = (error: any) => {
+    return error?.response?.status === 404 || error?.status === 404;
+  };
+  
+  // Only consider it an error if the main customer request failed
+  // 404s on sub-resources (notes, interactions, appointments) are acceptable
+  const hasRealError = customer.error || 
+    (notes.error && !is404Error(notes.error)) ||
+    (interactions.error && !is404Error(interactions.error)) ||
+    (appointments.error && !is404Error(appointments.error));
+  
   return {
     customer,
     notes,
     interactions,
     appointments,
     isLoading: customer.isLoading || notes.isLoading || interactions.isLoading || appointments.isLoading,
-    error: customer.error || notes.error || interactions.error || appointments.error,
+    error: hasRealError,
   };
 };

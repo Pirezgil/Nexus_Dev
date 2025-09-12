@@ -94,14 +94,19 @@ router.post('/refresh',
 );
 
 /**
- * @route   GET /auth/validate
+ * @route   GET|POST /auth/validate
  * @desc    Validate token for other modules
  * @access  Public (but requires valid token)
  */
-router.get('/validate', 
-  ...(isDevelopment ? [] : [tokenValidationRateLimit]),
-  AuthController.validate
-);
+router.route('/validate')
+  .get(
+    ...(isDevelopment ? [] : [tokenValidationRateLimit]),
+    AuthController.validate
+  )
+  .post(
+    ...(isDevelopment ? [] : [tokenValidationRateLimit]),
+    AuthController.validate
+  );
 
 /**
  * @route   GET /auth/me

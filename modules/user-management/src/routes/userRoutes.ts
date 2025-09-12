@@ -11,13 +11,32 @@ import {
   createUserSchema,
   updateUserSchema,
   paginationSchema,
+  loginSchema,
 } from '../types';
 
 const router = Router();
 
-// Apply authentication to all routes
+// Public routes (no authentication required)
+/**
+ * @route   POST /users/login
+ * @desc    User login
+ * @access  Public
+ */
+router.post('/login', 
+  validate(loginSchema),
+  UserController.login
+);
+
+// Apply authentication to all remaining routes
 router.use(authenticate);
 router.use(enforceCompanyAccess);
+
+/**
+ * @route   POST /users/logout
+ * @desc    User logout
+ * @access  Private
+ */
+router.post('/logout', UserController.logout);
 
 /**
  * @route   GET /users/profile

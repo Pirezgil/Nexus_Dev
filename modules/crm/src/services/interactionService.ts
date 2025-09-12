@@ -12,6 +12,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database';
 import { logger } from '../utils/logger';
 import { redis } from '../utils/redis';
+import { notificationClient } from './notificationClient';
 
 export class InteractionService {
   /**
@@ -180,6 +181,31 @@ export class InteractionService {
         createdBy,
         type: data.type 
       });
+
+      // Send notification about new interaction
+      try {
+        // Get customer name for notification
+        const customer = await prisma.customer.findUnique({
+          where: { id: customerId },
+          select: { name: true }
+        });
+        
+        if (customer) {
+          await notificationClient.notifyInteractionCreated(
+            companyId,
+            createdBy,
+            customer.name,
+            customerId,
+            data.type,
+            data.title
+          );
+        }
+      } catch (notificationError) {
+        logger.warn('Failed to send interaction creation notification', {
+          interactionId: interaction.id,
+          error: notificationError
+        });
+      }
 
       // Invalidate customer cache
       await this.invalidateCustomerCaches(customerId, companyId);

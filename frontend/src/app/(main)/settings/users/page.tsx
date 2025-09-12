@@ -4,7 +4,6 @@
 'use client';
 
 import React from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/ui/data-table';
 import { Button } from '@/components/ui/button';
@@ -12,8 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
-import { Alert } from '@/components/ui/alert';
-import { toast } from '@/lib/toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   Search, 
   UserPlus, 
@@ -21,133 +19,81 @@ import {
   Trash2, 
   Mail,
   AlertCircle,
-  CheckCircle 
+  CheckCircle,
+  MoreHorizontal
 } from 'lucide-react';
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { UserFormModal } from '@/components/users/UserFormModal';
+import {
+  useUsers,
+  useCreateUser,
+  useUpdateUser,
+  useDeleteUser,
+  useActivateUser,
+  useDeactivateUser,
+  useResetUserPassword,
+  User,
+  CreateUserData,
+  UpdateUserData,
+  PaginationParams
+} from '@/hooks/api/use-users';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
-// Tipos de dados
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'admin' | 'manager' | 'employee';
-  is_active: boolean;
-  last_login?: string;
-  created_at: string;
+// Types for confirmation dialogs
+interface ConfirmationDialog {
+  isOpen: boolean;
+  title: string;
+  description: string;
+  onConfirm: () => void;
 }
 
-interface UsersResponse {
-  success: boolean;
-  data: {
-    users: User[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      pages: number;
-    };
-  };
+// Modal states
+interface ModalState {
+  isOpen: boolean;
+  user: User | null;
 }
 
 // Labels para roles
 const roleLabels = {
-  admin: { label: 'Administrador', variant: 'destructive' as const },
-  manager: { label: 'Gerente', variant: 'default' as const },
-  employee: { label: 'Funcionário', variant: 'secondary' as const }
+  ADMIN: { label: 'Administrador', variant: 'destructive' as const },
+  MANAGER: { label: 'Gerente', variant: 'default' as const },
+  USER: { label: 'Usuário', variant: 'secondary' as const }
 };
 
-// Hook para buscar usuários
-const useUsers = (search: string = '') => {
-  return useQuery<UsersResponse>({
-    queryKey: ['users', search],
-    queryFn: async () => {
-      // Simular chamada à API - substituir pela API real
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const mockUsers: User[] = [
-        {
-          id: '1',
-          name: 'João Silva',
-          email: 'joao@empresa.com',
-          role: 'admin',
-          is_active: true,
-          last_login: '2024-09-03T08:30:00Z',
-          created_at: '2024-01-15T10:00:00Z'
-        },
-        {
-          id: '2', 
-          name: 'Maria Santos',
-          email: 'maria@empresa.com',
-          role: 'manager',
-          is_active: true,
-          last_login: '2024-09-02T16:45:00Z',
-          created_at: '2024-02-01T10:00:00Z'
-        },
-        {
-          id: '3',
-          name: 'Pedro Costa',
-          email: 'pedro@empresa.com', 
-          role: 'employee',
-          is_active: false,
-          last_login: '2024-08-28T12:15:00Z',
-          created_at: '2024-03-10T10:00:00Z'
-        }
-      ];
-
-      const filteredUsers = search 
-        ? mockUsers.filter(user => 
-            user.name.toLowerCase().includes(search.toLowerCase()) ||
-            user.email.toLowerCase().includes(search.toLowerCase())
-          )
-        : mockUsers;
-
-      return {
-        success: true,
-        data: {
-          users: filteredUsers,
-          pagination: {
-            page: 1,
-            limit: 20,
-            total: filteredUsers.length,
-            pages: 1
-          }
-        }
-      };
-    }
-  });
+const statusLabels = {
+  ACTIVE: { label: 'Ativo', variant: 'default' as const },
+  INACTIVE: { label: 'Inativo', variant: 'secondary' as const },
+  PENDING: { label: 'Pendente', variant: 'outline' as const }
 };
 
-// Hook para deletar usuário
-const useDeleteUser = () => {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (userId: string) => {
-      // Simular chamada à API
-      await new Promise(resolve => setTimeout(resolve, 500));
-      // Aqui seria: await api.delete(`/users/${userId}`)
-    },
-    onSuccess: () => {
-      toast.success('Usuário removido com sucesso!');
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-    },
-    onError: () => {
-      toast.error('Erro ao remover usuário');
-    }
-  });
+// Helper functions
+const getFullName = (user: User) => `${user.firstName} ${user.lastName}`;
+
+const getInitials = (user: User) => {
+  const firstName = user.firstName || '';
+  const lastName = user.lastName || '';
+  return (firstName[0] || '') + (lastName[0] || '');
 };
 
-// Função para obter iniciais do nome
-const getInitials = (name: string) => {
-  return name
-    .split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2);
-};
+
 
 // Função para formatar data
-const formatDate = (dateString?: string) => {
+const formatDate = (dateString?: string | null) => {
   if (!dateString) return 'Nunca';
   
   const date = new Date(dateString);
@@ -163,54 +109,149 @@ const formatDate = (dateString?: string) => {
 export default function UsersPage() {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  const [pagination, setPagination] = React.useState<PaginationParams>({
+    page: 1,
+    limit: 10,
+    sortBy: 'firstName',
+    sortOrder: 'asc',
+  });
+  const [userModal, setUserModal] = React.useState<ModalState>({
+    isOpen: false,
+    user: null,
+  });
+  const [confirmDialog, setConfirmDialog] = React.useState<ConfirmationDialog>({
+    isOpen: false,
+    title: '',
+    description: '',
+    onConfirm: () => {},
+  });
 
   // Debounce da busca
   React.useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchTerm);
+      setPagination(prev => ({ ...prev, page: 1, search: searchTerm || undefined }));
     }, 300);
 
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // Hooks de dados
-  const { data, isLoading, isError, error } = useUsers(debouncedSearch);
+  // API Hooks
+  const { data: usersData, isLoading, isError, error } = useUsers({
+    ...pagination,
+    search: debouncedSearch || undefined,
+  });
+  
+  const createUserMutation = useCreateUser();
+  const updateUserMutation = useUpdateUser();
   const deleteUserMutation = useDeleteUser();
+  const activateUserMutation = useActivateUser();
+  const deactivateUserMutation = useDeactivateUser();
+  const resetPasswordMutation = useResetUserPassword();
 
   // Handlers
-  const handleAddUser = () => {
-    // Navegar para página de criação ou abrir modal
-    toast.info('Funcionalidade de adicionar usuário será implementada');
+  const handleCreateUser = () => {
+    setUserModal({ isOpen: true, user: null });
   };
 
   const handleEditUser = (user: User) => {
-    // Navegar para página de edição ou abrir modal
-    toast.info(`Editar usuário: ${user.name}`);
+    setUserModal({ isOpen: true, user });
   };
 
-  const handleDeleteUser = async (user: User) => {
-    if (confirm(`Tem certeza que deseja remover o usuário "${user.name}"?`)) {
-      deleteUserMutation.mutate(user.id);
+  const handleDeleteUser = (user: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Confirmar Exclusão',
+      description: `Tem certeza que deseja remover o usuário "${getFullName(user)}"? Esta ação não pode ser desfeita.`,
+      onConfirm: () => {
+        deleteUserMutation.mutate(user.id);
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleActivateUser = (user: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Ativar Usuário',
+      description: `Confirma a ativação do usuário "${getFullName(user)}"?`,
+      onConfirm: () => {
+        activateUserMutation.mutate(user.id);
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleDeactivateUser = (user: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Desativar Usuário',
+      description: `Confirma a desativação do usuário "${getFullName(user)}"?`,
+      onConfirm: () => {
+        deactivateUserMutation.mutate(user.id);
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleResetPassword = (user: User) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Redefinir Senha',
+      description: `Confirma a redefinição da senha do usuário "${getFullName(user)}"? Uma nova senha temporária será gerada.`,
+      onConfirm: () => {
+        resetPasswordMutation.mutate({ userId: user.id });
+        setConfirmDialog(prev => ({ ...prev, isOpen: false }));
+      },
+    });
+  };
+
+  const handleFormSubmit = (data: CreateUserData | UpdateUserData) => {
+    if (userModal.user) {
+      // Update user
+      updateUserMutation.mutate(
+        { id: userModal.user.id, data: data as UpdateUserData },
+        {
+          onSuccess: () => {
+            setUserModal({ isOpen: false, user: null });
+          },
+        }
+      );
+    } else {
+      // Create user
+      createUserMutation.mutate(data as CreateUserData, {
+        onSuccess: () => {
+          setUserModal({ isOpen: false, user: null });
+        },
+      });
     }
+  };
+
+  const handleCloseModal = () => {
+    setUserModal({ isOpen: false, user: null });
+  };
+
+  const handleCloseConfirmDialog = () => {
+    setConfirmDialog(prev => ({ ...prev, isOpen: false }));
   };
 
   // Definição das colunas da tabela
   const columns: ColumnDef<User>[] = [
     {
-      accessorKey: 'name',
+      id: 'user',
       header: 'Usuário',
       cell: ({ row }) => {
         const user = row.original;
         return (
           <div className="flex items-center gap-3">
             <Avatar className="w-8 h-8">
-              <AvatarImage src="" />
+              <AvatarImage src={user.avatar || ''} />
               <AvatarFallback className="text-sm bg-blue-600 text-white">
-                {getInitials(user.name)}
+                {getInitials(user)}
               </AvatarFallback>
             </Avatar>
             <div>
-              <div className="font-medium">{user.name}</div>
+              <div className="font-medium">{getFullName(user)}</div>
               <div className="text-sm text-gray-600">{user.email}</div>
             </div>
           </div>
@@ -225,40 +266,36 @@ export default function UsersPage() {
         const roleInfo = roleLabels[role];
         
         return (
-          <Badge variant={roleInfo.variant}>
-            {roleInfo.label}
+          <Badge variant={roleInfo?.variant || 'secondary'}>
+            {roleInfo?.label || role}
           </Badge>
         );
       }
     },
     {
-      accessorKey: 'is_active',
+      accessorKey: 'status',
       header: 'Status',
       cell: ({ row }) => {
-        const isActive = row.getValue('is_active') as boolean;
+        const status = row.getValue('status') as keyof typeof statusLabels;
+        const statusInfo = statusLabels[status];
         
         return (
           <div className="flex items-center gap-1">
-            {isActive ? (
-              <>
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                <span className="text-green-700">Ativo</span>
-              </>
-            ) : (
-              <>
-                <AlertCircle className="w-4 h-4 text-red-500" />
-                <span className="text-red-700">Inativo</span>
-              </>
-            )}
+            {status === 'ACTIVE' && <CheckCircle className="w-4 h-4 text-green-500" />}
+            {status === 'INACTIVE' && <AlertCircle className="w-4 h-4 text-red-500" />}
+            {status === 'PENDING' && <Mail className="w-4 h-4 text-yellow-500" />}
+            <Badge variant={statusInfo?.variant || 'secondary'}>
+              {statusInfo?.label || status}
+            </Badge>
           </div>
         );
       }
     },
     {
-      accessorKey: 'last_login',
+      accessorKey: 'lastLoginAt',
       header: 'Último Acesso',
       cell: ({ row }) => {
-        const lastLogin = row.getValue('last_login') as string;
+        const lastLogin = row.getValue('lastLoginAt') as string;
         return (
           <span className="text-sm text-gray-600">
             {formatDate(lastLogin)}
@@ -273,37 +310,68 @@ export default function UsersPage() {
         const user = row.original;
         
         return (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => handleEditUser(user)}
-            >
-              <Edit className="w-4 h-4" />
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm" 
-              onClick={() => handleDeleteUser(user)}
-              disabled={deleteUserMutation.isPending}
-            >
-              <Trash2 className="w-4 h-4" />
-            </Button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Abrir menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleEditUser(user)}>
+                <Edit className="mr-2 h-4 w-4" />
+                Editar
+              </DropdownMenuItem>
+              
+              {user.status === 'ACTIVE' ? (
+                <DropdownMenuItem onClick={() => handleDeactivateUser(user)}>
+                  <AlertCircle className="mr-2 h-4 w-4" />
+                  Desativar
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => handleActivateUser(user)}>
+                  <CheckCircle className="mr-2 h-4 w-4" />
+                  Ativar
+                </DropdownMenuItem>
+              )}
+              
+              <DropdownMenuItem onClick={() => handleResetPassword(user)}>
+                <Mail className="mr-2 h-4 w-4" />
+                Redefinir Senha
+              </DropdownMenuItem>
+              
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={() => handleDeleteUser(user)}
+                className="text-red-600"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Remover
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         );
       }
     }
   ];
+
+  // Loading states for mutations
+  const isAnyMutationLoading = 
+    createUserMutation.isPending ||
+    updateUserMutation.isPending ||
+    deleteUserMutation.isPending ||
+    activateUserMutation.isPending ||
+    deactivateUserMutation.isPending ||
+    resetPasswordMutation.isPending;
 
   // Renderização com estados de loading e error
   if (isError) {
     return (
       <Alert variant="destructive">
         <AlertCircle className="w-4 h-4" />
-        <div>
-          <h4>Erro ao carregar usuários</h4>
-          <p>Não foi possível carregar a lista de usuários. Tente novamente.</p>
-        </div>
+        <AlertDescription>
+          Erro ao carregar usuários: {error?.message || 'Erro desconhecido'}
+        </AlertDescription>
       </Alert>
     );
   }
@@ -324,7 +392,7 @@ export default function UsersPage() {
           </div>
         </div>
         
-        <Button onClick={handleAddUser}>
+        <Button onClick={handleCreateUser}>
           <UserPlus className="w-4 h-4 mr-2" />
           Adicionar Usuário
         </Button>
@@ -339,10 +407,39 @@ export default function UsersPage() {
       ) : (
         <DataTable 
           columns={columns}
-          data={data?.data.users || []}
-          loading={isLoading}
+          data={usersData?.data || []}
+          loading={isLoading || isAnyMutationLoading}
         />
       )}
+
+      {/* User Form Modal */}
+      <UserFormModal
+        isOpen={userModal.isOpen}
+        onClose={handleCloseModal}
+        onSubmit={handleFormSubmit}
+        user={userModal.user}
+        isLoading={isAnyMutationLoading}
+      />
+
+      {/* Confirmation Dialog */}
+      <AlertDialog open={confirmDialog.isOpen} onOpenChange={handleCloseConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmDialog.description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCloseConfirmDialog}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDialog.onConfirm}>
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

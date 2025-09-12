@@ -1,9 +1,9 @@
-// ERP Nexus - AuthGuard Component (Refatorado)
-// Protege rotas sem duplicar lógica de inicialização
+// ERP Nexus - AuthGuard Component (Enhanced)
+// Protege rotas com lógica de autenticação robusta e tratamento de estados
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -13,78 +13,115 @@ interface AuthGuardProps {
 }
 
 export default function AuthGuard({ children }: AuthGuardProps) {
-  const { status, isAuthenticated, isInitialized } = useAuthStore();
+  const { status, isAuthenticated, isInitialized, isLoading } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
+  const redirected = useRef(false);
 
-  // Redirecionar para login quando não autenticado (após inicialização)
+  // Enhanced route protection with proper state management
   useEffect(() => {
-    // Só agir após a inicialização estar completa
-    if (!isInitialized) return;
-    
-    console.log('🛡️ AuthGuard status check:', { 
+    // Only proceed after full initialization
+    if (!isInitialized || isLoading) return;
+
+    console.log('🛡️ AuthGuard comprehensive check:', { 
       pathname,
       status, 
       isAuthenticated, 
-      isInitialized 
+      isInitialized,
+      isLoading,
+      redirected: redirected.current
     });
-    
-    // Páginas que não requerem autenticação
-    const publicRoutes = ['/login'];
-    
+
+    // Define public routes that don't require authentication
+    const publicRoutes = ['/login', '/register', '/forgot-password'];
+    const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
+
+    // Handle unauthenticated users
     if (!isAuthenticated && status === 'unauthenticated') {
-      if (!publicRoutes.includes(pathname)) {
-        console.log('❌ AuthGuard: Usuário não autenticado, redirecionando para login');
-        router.push('/login');
+      if (!isPublicRoute && !redirected.current) {
+        console.log('❌ AuthGuard: User not authenticated, redirecting to login');
+        redirected.current = true;
+        
+        // Store current path for redirect after login
+        if (pathname !== '/login' && pathname !== '/') {
+          sessionStorage.setItem('redirectAfterLogin', pathname);
+        }
+        
+        router.replace('/login');
         return;
       }
     }
 
-    // Se autenticado e tentando acessar páginas de login
-    if (isAuthenticated && status === 'authenticated' && publicRoutes.includes(pathname)) {
-      console.log('✅ AuthGuard: Usuário autenticado tentando acessar login, redirecionando para dashboard');
-      router.push('/dashboard');
-      return;
+    // Handle authenticated users trying to access public routes
+    if (isAuthenticated && status === 'authenticated') {
+      if (isPublicRoute && !redirected.current) {
+        console.log('✅ AuthGuard: Authenticated user accessing public route, redirecting to dashboard');
+        redirected.current = true;
+        
+        // Check for redirect path from login
+        const redirectPath = sessionStorage.getItem('redirectAfterLogin') || '/dashboard';
+        if (pathname === '/login') {
+          sessionStorage.removeItem('redirectAfterLogin');
+          router.replace(redirectPath);
+        } else {
+          router.replace('/dashboard');
+        }
+        return;
+      }
     }
-  }, [status, isAuthenticated, isInitialized, router, pathname]);
 
-  // Aguardar inicialização (AuthProvider já cuida disso, mas garantia extra)
-  if (!isInitialized || status === 'loading') {
-    console.log('⏳ AuthGuard: Aguardando inicialização...');
+    // Reset redirect flag on successful navigation
+    if (redirected.current && isAuthenticated && !isPublicRoute) {
+      redirected.current = false;
+    }
+  }, [status, isAuthenticated, isInitialized, isLoading, router, pathname]);
+
+  // Show loading during initialization only
+  if (!isInitialized) {
+    console.log('⏳ AuthGuard: Waiting for initialization -', { isInitialized, status });
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
         <div className="text-center space-y-4">
           <LoadingSpinner size="lg" />
-          <p className="text-slate-600 dark:text-slate-400 text-sm">
-            Verificando permissões...
-          </p>
+          <div className="space-y-2">
+            <h1 className="text-xl font-semibold text-slate-700 dark:text-slate-300">
+              ERP Nexus
+            </h1>
+            <p className="text-slate-600 dark:text-slate-400 text-sm">
+              Inicializando sistema...
+            </p>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Páginas públicas - renderizar sempre
-  const publicRoutes = ['/login'];
-  if (publicRoutes.includes(pathname)) {
-    console.log('🌐 AuthGuard: Renderizando página pública');
+  // Handle public routes - render immediately if accessing public route
+  const publicRoutes = ['/login', '/register', '/forgot-password'];
+  const isPublicRoute = publicRoutes.some(route => pathname.startsWith(route));
+  
+  if (isPublicRoute) {
+    console.log('🌐 AuthGuard: Rendering public route');
     return <>{children}</>;
   }
 
-  // Páginas protegidas - só renderizar se autenticado
+  // Handle protected routes - only render if authenticated
   if (status === 'authenticated' && isAuthenticated) {
-    console.log('✅ AuthGuard: Renderizando conteúdo protegido');
+    console.log('✅ AuthGuard: Rendering protected content');
     return <>{children}</>;
   }
 
-  // Estado intermediário - aguardar redirecionamento
-  console.log('⏳ AuthGuard: Aguardando redirecionamento...');
+  // Fallback state - show loading while redirect is processed
+  console.log('⏳ AuthGuard: Fallback state, showing loading');
   return (
     <div className="flex h-screen items-center justify-center bg-slate-50 dark:bg-slate-900">
       <div className="text-center space-y-4">
         <LoadingSpinner size="lg" />
-        <p className="text-slate-600 dark:text-slate-400 text-sm">
-          Redirecionando...
-        </p>
+        <div className="space-y-2">
+          <p className="text-slate-600 dark:text-slate-400 text-sm">
+            Verificando acesso...
+          </p>
+        </div>
       </div>
     </div>
   );

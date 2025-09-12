@@ -77,7 +77,8 @@ const servicesProxy = createProxyMiddleware({
   target: SERVICES_SERVICE_URL,
   changeOrigin: true,
   pathRewrite: {
-    '^/api/services': '/api/services'
+    '^/api/services': '/services',
+    '^/api/professionals': '/professionals'
   },
   timeout: parseInt(process.env.TIMEOUT_GATEWAY_SERVICES || '60000', 10), // Configurable timeout for services
   

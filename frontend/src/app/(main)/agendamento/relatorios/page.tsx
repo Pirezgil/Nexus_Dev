@@ -137,7 +137,7 @@ export default function RelatoriosAgendaPage() {
       .filter(a => a.status === 'COMPLETED')
       .reduce((sum, appointment) => {
         const service = services.find(s => s.id === appointment.serviceId);
-        return sum + (service?.price || 0);
+        return sum + (Number(service?.price) || 0);
       }, 0);
 
     // Calcular duração média
@@ -163,7 +163,7 @@ export default function RelatoriosAgendaPage() {
         .filter(a => a.status === 'COMPLETED')
         .reduce((sum, appointment) => {
           const service = services.find(s => s.id === appointment.serviceId);
-          return sum + (service?.price || 0);
+          return sum + (Number(service?.price) || 0);
         }, 0);
 
       return {
@@ -179,7 +179,7 @@ export default function RelatoriosAgendaPage() {
       const serviceAppointments = appointments.filter(a => a.serviceId === service.id);
       const serviceRevenue = serviceAppointments
         .filter(a => a.status === 'COMPLETED')
-        .length * service.price;
+        .length * Number(service.price);
 
       return {
         service,

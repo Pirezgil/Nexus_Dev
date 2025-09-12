@@ -67,8 +67,7 @@ export const useLogin = () => {
       // Set user data in cache
       queryClient.setQueryData(queryKeys.auth.me, data.user);
       
-      // Redirect to dashboard
-      window.location.href = '/dashboard';
+      // Let the page useEffect handle redirect to avoid race conditions
     },
     onError: (error) => {
       console.error('Login failed:', error);

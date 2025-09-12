@@ -60,78 +60,10 @@ class App {
     // Compression middleware
     this.app.use(compression());
 
-    // Body parsing middleware - conditional based on API Gateway proxy
-    // Skip body parsing for requests coming from API Gateway to prevent stream conflicts
-    this.app.use((req, res, next) => {
-      // Check if request comes from API Gateway
-      const isFromGateway = req.headers['x-gateway-proxy'] === 'true' || 
-                           req.headers['x-gateway-source'] === 'nexus-api-gateway';
-      
-      if (isFromGateway) {
-        logger.info('Request from API Gateway detected - skipping body parsing', {
-          method: req.method,
-          url: req.url,
-          hasGatewayProxy: !!req.headers['x-gateway-proxy'],
-          hasGatewaySource: !!req.headers['x-gateway-source'],
-          hasBodyParsed: req.headers['x-gateway-body-parsed'] === 'true'
-        });
-        return next(); // Skip body parsing middleware
-      }
-      
-      // Apply normal body parsing for direct requests
-      express.json({ limit: '10mb' })(req, res, next);
-    });
-    
-    this.app.use((req, res, next) => {
-      // Skip URL encoded parsing for gateway requests
-      const isFromGateway = req.headers['x-gateway-proxy'] === 'true' || 
-                           req.headers['x-gateway-source'] === 'nexus-api-gateway';
-      
-      if (isFromGateway) {
-        return next();
-      }
-      
-      express.urlencoded({ extended: true, limit: '10mb' })(req, res, next);
-    });
-    
-    // Middleware to process pre-parsed body from API Gateway
-    this.app.use((req: any, res, next) => {
-      const isFromGateway = req.headers['x-gateway-proxy'] === 'true';
-      const isBodyParsed = req.headers['x-gateway-body-parsed'] === 'true';
-      
-      if (isFromGateway && isBodyParsed && ['POST', 'PUT', 'PATCH'].includes(req.method)) {
-        // Body is already available as raw buffer, we need to parse it
-        let bodyBuffer = '';
-        
-        req.on('data', (chunk: Buffer) => {
-          bodyBuffer += chunk.toString();
-        });
-        
-        req.on('end', () => {
-          try {
-            if (bodyBuffer.trim()) {
-              req.body = JSON.parse(bodyBuffer);
-              logger.info('Parsed pre-processed body from API Gateway', {
-                method: req.method,
-                url: req.url,
-                bodySize: bodyBuffer.length,
-                bodyKeys: req.body ? Object.keys(req.body) : []
-              });
-            }
-          } catch (error) {
-            logger.error('Failed to parse pre-processed body from API Gateway', {
-              method: req.method,
-              url: req.url,
-              error: error instanceof Error ? error.message : String(error),
-              bodyPreview: bodyBuffer.substring(0, 200)
-            });
-          }
-          next();
-        });
-      } else {
-        next();
-      }
-    });
+    // SIMPLIFICADO: Body parsing padrão para todas as requisições
+    // O API Gateway já cuida do parsing e envia como JSON válido
+    this.app.use(express.json({ limit: '10mb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
     // Temporarily disabled for timeout diagnosis
     // this.app.use(sanitizeInput);
@@ -233,6 +165,21 @@ class App {
           },
         },
         message: 'CRM module is healthy and ready',
+      });
+    });
+
+    // ENDPOINT DE TESTE DIRETO NO APP - SEM MIDDLEWARE
+    this.app.post('/api/test-direct', (req, res) => {
+      res.json({
+        success: true,
+        message: 'Endpoint direto funcionando!',
+        body: req.body,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).filter(([key]) => 
+            key.startsWith('x-') || key === 'authorization'
+          )
+        ),
+        timestamp: new Date().toISOString()
       });
     });
 

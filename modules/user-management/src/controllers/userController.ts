@@ -1,14 +1,93 @@
 import { Request, Response, NextFunction } from 'express';
+import { JwtPayload } from '../types';
+
+// Extend Request interface to include user
+declare global {
+  namespace Express {
+    interface Request {
+      user?: JwtPayload;
+    }
+  }
+}
 import { UserService } from '../services/userService';
+import { AuthService } from '../services/authService';
 import {
   CreateUserInput,
   UpdateUserInput,
   PaginationInput,
   ApiResponse,
+  LoginInput,
+  AppError,
+  NotFoundError,
+  ConflictError,
+  UnauthorizedError,
+  ForbiddenError,
 } from '../types';
+import { UserRole, UserStatus } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { prisma } from '../utils/database';
 
 export class UserController {
+  /**
+   * User login
+   * POST /users/login
+   */
+  static async login(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const loginData: LoginInput = req.body;
+      const deviceInfo = {
+        ipAddress: req.ip,
+        userAgent: req.get('User-Agent'),
+      };
+
+      const result = await AuthService.login(loginData, deviceInfo);
+
+      const response: ApiResponse = {
+        success: true,
+        data: result,
+        message: 'Login realizado com sucesso',
+      };
+
+      logger.info('User login successful via user controller', {
+        userId: result.user.id,
+        email: result.user.email,
+        ipAddress: req.ip,
+      });
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * User logout
+   * POST /users/logout
+   */
+  static async logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const sessionId = req.user?.sessionId;
+      
+      if (sessionId) {
+        await AuthService.logout(sessionId);
+      }
+
+      const response: ApiResponse = {
+        success: true,
+        message: 'Logout realizado com sucesso',
+      };
+
+      logger.info('User logout successful via user controller', {
+        userId: req.user?.userId,
+        sessionId,
+      });
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Create new user
    * POST /users
@@ -19,7 +98,24 @@ export class UserController {
       const createdByUserId = req.user!.userId;
       const companyId = req.user!.companyId;
 
-      const user = await UserService.createUser(userData, createdByUserId, companyId);
+      // Validate that the user has permission to create users
+      if (req.user!.role === UserRole.VIEWER) {
+        throw new ForbiddenError('Visualizadores não podem criar usuários');
+      }
+
+      // Only admins can create other admins or managers
+      if ((userData.role === UserRole.ADMIN || userData.role === UserRole.MANAGER) && 
+          req.user!.role !== UserRole.ADMIN) {
+        throw new ForbiddenError('Apenas administradores podem criar administradores ou gerentes');
+      }
+
+      // Add company ID to user data
+      const createData = {
+        ...userData,
+        companyId,
+      };
+
+      const user = await UserService.createUser(createData, createdByUserId, companyId);
 
       const response: ApiResponse = {
         success: true,
@@ -32,6 +128,7 @@ export class UserController {
         email: user.email,
         createdBy: createdByUserId,
         companyId,
+        role: user.role,
       });
 
       res.status(201).json(response);
@@ -97,6 +194,36 @@ export class UserController {
       const updatedByUserId = req.user!.userId;
       const companyId = req.user!.companyId;
 
+      // Validate that the user has permission to update users
+      if (req.user!.role === UserRole.VIEWER) {
+        throw new ForbiddenError('Visualizadores não podem atualizar usuários');
+      }
+
+      // Get the user being updated to check role-based permissions
+      const targetUser = await prisma.user.findFirst({
+        where: { id, companyId },
+        select: { role: true, id: true }
+      });
+
+      if (!targetUser) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Users can only update their own profile unless they're admin/manager
+      if (req.user!.role === UserRole.USER && id !== updatedByUserId) {
+        throw new ForbiddenError('Usuários só podem atualizar seu próprio perfil');
+      }
+
+      // Only admins can change roles or update admins/managers
+      if (updateData.role && req.user!.role !== UserRole.ADMIN) {
+        throw new ForbiddenError('Apenas administradores podem alterar funções de usuário');
+      }
+
+      // Managers cannot update admins
+      if (req.user!.role === UserRole.MANAGER && targetUser.role === UserRole.ADMIN) {
+        throw new ForbiddenError('Gerentes não podem atualizar administradores');
+      }
+
       const user = await UserService.updateUser(id, updateData, updatedByUserId, companyId);
 
       const response: ApiResponse = {
@@ -128,6 +255,36 @@ export class UserController {
       const deletedByUserId = req.user!.userId;
       const companyId = req.user!.companyId;
 
+      // Validate that the user has permission to delete users
+      if (req.user!.role === UserRole.VIEWER || req.user!.role === UserRole.USER) {
+        throw new ForbiddenError('Apenas administradores e gerentes podem desativar usuários');
+      }
+
+      // Get the user being deleted to check role-based permissions
+      const targetUser = await prisma.user.findFirst({
+        where: { id, companyId },
+        select: { role: true, id: true, email: true }
+      });
+
+      if (!targetUser) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Users cannot delete themselves
+      if (id === deletedByUserId) {
+        throw new ForbiddenError('Não é possível desativar seu próprio usuário');
+      }
+
+      // Managers cannot delete admins
+      if (req.user!.role === UserRole.MANAGER && targetUser.role === UserRole.ADMIN) {
+        throw new ForbiddenError('Gerentes não podem desativar administradores');
+      }
+
+      // Only admins can delete other admins
+      if (req.user!.role === UserRole.ADMIN && targetUser.role === UserRole.ADMIN && id !== deletedByUserId) {
+        throw new ForbiddenError('Administradores não podem desativar outros administradores');
+      }
+
       await UserService.deleteUser(id, deletedByUserId, companyId);
 
       const response: ApiResponse = {
@@ -139,6 +296,8 @@ export class UserController {
         userId: id,
         deletedBy: deletedByUserId,
         companyId,
+        targetUserRole: targetUser.role,
+        targetUserEmail: targetUser.email,
       });
 
       res.status(200).json(response);
@@ -325,30 +484,95 @@ export class UserController {
   static async resetUserPassword(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { id } = req.params;
-      const { temporaryPassword } = req.body;
+      const { temporaryPassword, forceChange } = req.body;
       const updatedByUserId = req.user!.userId;
       const companyId = req.user!.companyId;
 
-      // This would hash the temporary password and update the user
-      // For now, we'll use the update method to change status to PENDING
-      // In a full implementation, you'd want a specific resetPassword method
-      const user = await UserService.updateUser(
-        id,
-        { status: 'PENDING' }, // Force password change on next login
-        updatedByUserId,
-        companyId
-      );
+      // Only admins can reset passwords
+      if (req.user!.role !== UserRole.ADMIN) {
+        throw new ForbiddenError('Apenas administradores podem redefinir senhas');
+      }
+
+      // Get the user being updated
+      const targetUser = await prisma.user.findFirst({
+        where: { id, companyId },
+        select: { email: true, status: true, role: true }
+      });
+
+      if (!targetUser) {
+        throw new NotFoundError('Usuário não encontrado');
+      }
+
+      // Generate a temporary password if not provided
+      const tempPassword = temporaryPassword || Math.random().toString(36).slice(-8) + 'A1!';
+      
+      // Hash the temporary password
+      const hashedPassword = await AuthService.hashPassword(tempPassword);
+
+      // Update user password and optionally force password change
+      const updateData: any = {
+        password: hashedPassword,
+      };
+
+      if (forceChange) {
+        updateData.status = UserStatus.PENDING;
+      }
+
+      const user = await prisma.user.update({
+        where: { id },
+        data: updateData,
+        include: {
+          company: {
+            select: {
+              id: true,
+              name: true,
+              plan: true,
+            },
+          },
+        },
+      });
+
+      // Revoke all sessions for security
+      await AuthService.revokeAllSessions(id);
+
+      // Create audit log
+      await prisma.auditLog.create({
+        data: {
+          userId: updatedByUserId,
+          companyId,
+          action: 'RESET_PASSWORD',
+          entityType: 'USER',
+          entityId: id,
+          success: true,
+          newValues: {
+            passwordReset: true,
+            forceChange: !!forceChange,
+          },
+        },
+      });
 
       const response: ApiResponse = {
         success: true,
-        data: user,
-        message: 'Senha do usuário foi redefinida. Usuário deve alterar a senha no próximo login.',
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            status: user.status,
+          },
+          temporaryPassword: tempPassword,
+          forceChange: !!forceChange,
+        },
+        message: forceChange 
+          ? 'Senha redefinida com sucesso. Usuário deve alterar a senha no próximo login.'
+          : 'Senha redefinida com sucesso.',
       };
 
       logger.info('User password reset by admin', {
         userId: id,
         resetBy: updatedByUserId,
         companyId,
+        forceChange: !!forceChange,
+        targetUserEmail: targetUser.email,
       });
 
       res.status(200).json(response);

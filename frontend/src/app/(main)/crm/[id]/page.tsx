@@ -8,6 +8,7 @@ import {
   useUpdateCustomer, 
   useCreateCustomerNote,
   useCreateCustomerInteraction,
+  useCustomerTags,
   Customer 
 } from '@/hooks/api/use-customers';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { TagInput } from '@/components/modules/crm/TagInput';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -35,13 +37,21 @@ import {
   MessageSquare,
   Plus,
   Clock,
-  Users
+  Users,
+  AlertTriangle,
+  RefreshCw,
+  WhatsApp,
+  ExternalLink
 } from 'lucide-react';
 import { formatAddress, formatAddressCompact, createEmptyAddress, addressFromAPIResponse } from '@/utils/address';
-import { InteractionTimeline } from '@/components/modules/crm/InteractionTimeline';
+import { formatPhone, formatDate } from '@/lib/format';
+import { EnhancedInteractionTimeline } from '@/components/modules/crm/EnhancedInteractionTimeline';
+import { CustomerHeader } from '@/components/modules/crm/CustomerHeader';
+import { CustomerStats } from '@/components/modules/crm/CustomerStats';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { withAuth } from '@/components/auth/withAuth';
 import { Textarea } from '@/components/ui/textarea';
+import { toast } from '@/hooks/use-toast';
 
 // Schema atualizado para endereço estruturado
 const addressSchema = z.object({
@@ -61,6 +71,7 @@ const editCustomerSchema = z.object({
   document: z.string().optional(),
   address: addressSchema.optional(),
   status: z.enum(['ACTIVE', 'PROSPECT', 'INACTIVE', 'BLOCKED']),
+  tags: z.array(z.string()).default([]),
 });
 
 type EditCustomerFormData = z.infer<typeof editCustomerSchema>;
@@ -71,12 +82,39 @@ function ClienteDetalhePage() {
   const customerId = params.id as string;
   const [isEditing, setIsEditing] = useState(false);
   const [newNote, setNewNote] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // React Query hooks
-  const { customer, notes, interactions, appointments, isLoading, error } = useCustomerComplete(customerId);
+  const { customer, notes, interactions, appointments, isLoading, error, refetch } = useCustomerComplete(customerId);
+  
+  // HOTFIX: Ignore 404 and 500 errors from sub-resources (notes, interactions, appointments)
+  // Sub-resource errors shouldn't prevent displaying main customer data
+  const isIgnorableError = (err: any) => {
+    const status = err?.response?.status || err?.status;
+    return status === 404 || status === 500;
+  };
+  
+  const hasRealError = customer.error || 
+    (notes.error && !isIgnorableError(notes.error)) ||
+    (interactions.error && !isIgnorableError(interactions.error)) ||
+    (appointments.error && !isIgnorableError(appointments.error));
+    
+  console.log('🔧 HOTFIX DEBUG:', { 
+    originalError: error, 
+    hasRealError, 
+    customerData: customer?.data?.name,
+    customerError: customer.error,
+    notesError: notes.error?.response?.status,
+    interactionsError: interactions.error?.response?.status,
+    appointmentsError: appointments.error?.response?.status,
+    notesIgnorable: notes.error ? isIgnorableError(notes.error) : false,
+    interactionsIgnorable: interactions.error ? isIgnorableError(interactions.error) : false,
+    appointmentsIgnorable: appointments.error ? isIgnorableError(appointments.error) : false
+  });
   const updateCustomerMutation = useUpdateCustomer();
   const createNoteMutation = useCreateCustomerNote();
   const createInteractionMutation = useCreateCustomerInteraction();
+  const { data: availableTags } = useCustomerTags();
 
   // Form for editing customer
   const form = useForm<EditCustomerFormData>({
@@ -88,6 +126,7 @@ function ClienteDetalhePage() {
       document: customer?.data?.document || '',
       address: customer?.data?.address || createEmptyAddress(),
       status: customer?.data?.status || 'ACTIVE',
+      tags: customer?.data?.tags || [],
     },
   });
 
@@ -101,6 +140,7 @@ function ClienteDetalhePage() {
         document: customer.data.document || '',
         address: customer.data.address || createEmptyAddress(),
         status: customer.data.status,
+        tags: customer.data.tags || [],
       });
     }
   }, [customer?.data, form]);
@@ -127,19 +167,70 @@ function ClienteDetalhePage() {
         },
       });
       setNewNote('');
+      toast({
+        title: "Anotação adicionada",
+        description: "A anotação foi salva com sucesso.",
+      });
     } catch (error) {
-      // Error handled by mutation
+      toast({
+        title: "Erro ao salvar",
+        description: "Não foi possível salvar a anotação.",
+        variant: "destructive",
+      });
     }
   };
 
-  const formatPhone = (phone?: string) => {
-    if (!phone) return '-';
-    return phone.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+  // Contact handlers
+  const handleContact = (type: 'whatsapp' | 'email' | 'phone') => {
+    if (!customer?.data) return;
+
+    const contactInfo = {
+      whatsapp: customer.data.phone,
+      email: customer.data.email,
+      phone: customer.data.phone,
+    };
+
+    if (!contactInfo[type]) {
+      toast({
+        title: "Informação não disponível",
+        description: `O cliente não possui ${type === 'whatsapp' ? 'WhatsApp' : type === 'email' ? 'e-mail' : 'telefone'} cadastrado.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    let url = '';
+    switch (type) {
+      case 'whatsapp':
+        url = `https://wa.me/${contactInfo.whatsapp?.replace(/\D/g, '')}`;
+        break;
+      case 'email':
+        url = `mailto:${contactInfo.email}`;
+        break;
+      case 'phone':
+        url = `tel:${contactInfo.phone?.replace(/\D/g, '')}`;
+        break;
+    }
+
+    window.open(url, '_blank');
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('pt-BR');
+  const handleSchedule = () => {
+    // Navigate to scheduling page
+    router.push(`/agendamento/novo?cliente=${customerId}`);
   };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refetch();
+    setIsRefreshing(false);
+    toast({
+      title: "Dados atualizados",
+      description: "As informações do cliente foram atualizadas.",
+    });
+  };
+
+  // Format functions are now imported from format.ts
 
   if (isLoading) {
     return (
@@ -147,16 +238,53 @@ function ClienteDetalhePage() {
         title="Carregando..."
         subtitle="Buscando dados do cliente"
       >
-        <div className="animate-pulse space-y-6">
-          <div className="h-8 bg-gray-200 rounded w-64"></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-2 space-y-4">
-              <div className="h-64 bg-gray-200 rounded"></div>
-              <div className="h-32 bg-gray-200 rounded"></div>
+        <div className="space-y-6">
+          {/* Enhanced Loading Skeleton */}
+          <div className="animate-pulse">
+            <div className="h-8 bg-muted rounded w-64 mb-6"></div>
+            
+            {/* Header Skeleton */}
+            <div className="bg-card border border-border rounded-lg p-6 mb-6">
+              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+                  <div className="w-24 h-24 bg-muted rounded-full border-4 border-background"></div>
+                  <div className="space-y-3">
+                    <div className="h-8 bg-muted rounded w-48"></div>
+                    <div className="h-4 bg-muted rounded w-32"></div>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-10 bg-muted rounded w-20"></div>
+                  <div className="h-10 bg-muted rounded w-24"></div>
+                </div>
+              </div>
             </div>
-            <div className="space-y-4">
-              <div className="h-32 bg-gray-200 rounded"></div>
-              <div className="h-32 bg-gray-200 rounded"></div>
+
+            {/* Stats Skeleton */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="bg-card border border-border rounded-lg p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-2">
+                      <div className="h-4 bg-muted rounded w-20"></div>
+                      <div className="h-8 bg-muted rounded w-16"></div>
+                    </div>
+                    <div className="w-12 h-12 bg-muted rounded-lg"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Content Skeleton */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-4">
+                <div className="h-64 bg-muted rounded-lg"></div>
+                <div className="h-48 bg-muted rounded-lg"></div>
+              </div>
+              <div className="space-y-4">
+                <div className="h-40 bg-muted rounded-lg"></div>
+                <div className="h-40 bg-muted rounded-lg"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -164,20 +292,87 @@ function ClienteDetalhePage() {
     );
   }
 
-  if (error || !customer?.data) {
+  if (hasRealError || !customer?.data) {
+    // Determine error type for better user feedback
+    const isNetworkError = hasRealError && !navigator.onLine;
+    const isServerError = hasRealError && (
+      (customer.error?.response?.status >= 500) ||
+      (notes.error?.response?.status >= 500) ||
+      (interactions.error?.response?.status >= 500) ||
+      (appointments.error?.response?.status >= 500)
+    );
+    
     return (
       <DashboardLayout
-        title="Cliente não encontrado"
-        subtitle="O cliente solicitado não foi localizado"
+        title="Erro ao carregar cliente"
+        subtitle={isNetworkError ? "Verifique sua conexão com a internet" : 
+                 isServerError ? "Erro interno do servidor" :
+                 "O cliente solicitado não foi localizado"}
       >
-        <div className="text-center">
-          <div className="text-gray-500">
-            <User size={48} className="mx-auto mb-4 text-gray-300" />
-            <p className="text-lg">Cliente não encontrado</p>
-            <Button onClick={() => router.push('/crm')} className="mt-4">
+        <div className="max-w-md mx-auto text-center">
+          <div className="mb-6">
+            {isNetworkError ? (
+              <div className="w-16 h-16 mx-auto mb-4 bg-orange-100 rounded-full flex items-center justify-center">
+                <AlertTriangle className="h-8 w-8 text-orange-600" />
+              </div>
+            ) : (
+              <div className="w-16 h-16 mx-auto mb-4 bg-red-100 rounded-full flex items-center justify-center">
+                <User className="h-8 w-8 text-red-600" />
+              </div>
+            )}
+            
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              {isNetworkError ? "Sem conexão com a internet" :
+               isServerError ? "Erro no servidor" :
+               "Cliente não encontrado"}
+            </h3>
+            
+            <p className="text-muted-foreground mb-6">
+              {isNetworkError ? 
+                "Verifique sua conexão e tente novamente." :
+               isServerError ? 
+                "Ocorreu um erro interno. Tente novamente em alguns instantes." :
+                "O cliente que você está procurando não existe ou foi removido."}
+            </p>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="flex items-center gap-2"
+            >
+              {isRefreshing ? (
+                <RefreshCw className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {isRefreshing ? "Atualizando..." : "Tentar novamente"}
+            </Button>
+            
+            <Button
+              variant="outline"
+              onClick={() => router.push('/crm')}
+              className="flex items-center gap-2"
+            >
+              <ArrowLeft className="h-4 w-4" />
               Voltar para Lista
             </Button>
           </div>
+          
+          {/* Additional error details for debugging (hidden in production) */}
+          {process.env.NODE_ENV === 'development' && hasRealError && (
+            <div className="mt-6 p-4 bg-muted rounded-lg text-left">
+              <p className="text-sm font-mono text-muted-foreground">
+                Error details: {JSON.stringify({
+                  customerError: customer.error?.response?.status,
+                  notesError: notes.error?.response?.status,
+                  interactionsError: interactions.error?.response?.status,
+                  appointmentsError: appointments.error?.response?.status,
+                }, null, 2)}
+              </p>
+            </div>
+          )}
         </div>
       </DashboardLayout>
     );
@@ -190,76 +385,63 @@ function ClienteDetalhePage() {
       title={customerData.name}
       subtitle="Detalhes do cliente"
     >
-      <div className="flex items-center justify-between mb-6">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => router.push('/crm')}
-          className="flex items-center gap-2"
+      {/* Skip Links for Accessibility */}
+      <nav 
+        className="sr-only" 
+        aria-label="Navegação rápida"
+      >
+        <a 
+          href="#customer-info" 
+          className="block p-2 bg-primary text-primary-foreground"
         >
-          <ArrowLeft className="h-4 w-4" />
-          Voltar
-        </Button>
+          Pular para informações do cliente
+        </a>
+        <a 
+          href="#customer-timeline" 
+          className="block p-2 bg-primary text-primary-foreground"
+        >
+          Pular para timeline
+        </a>
+        <a 
+          href="#customer-notes" 
+          className="block p-2 bg-primary text-primary-foreground"
+        >
+          Pular para anotações
+        </a>
+      </nav>
 
-        <div className="flex items-center gap-2">
-          {/* Status Badge */}
-          <Badge 
-            className={
-              customerData.status === 'ACTIVE' ? 'bg-green-100 text-green-800' :
-              customerData.status === 'PROSPECT' ? 'bg-blue-100 text-blue-800' :
-              customerData.status === 'INACTIVE' ? 'bg-gray-100 text-gray-800' :
-              'bg-red-100 text-red-800'
-            }
-          >
-            {customerData.status === 'ACTIVE' ? 'Ativo' :
-             customerData.status === 'PROSPECT' ? 'Prospect' :
-             customerData.status === 'INACTIVE' ? 'Inativo' : 'Bloqueado'}
-          </Badge>
+      {/* Enhanced Customer Header */}
+      <CustomerHeader
+        customer={customerData}
+        loading={isLoading}
+        onEdit={() => router.push(`/crm/${customerId}/edit`)}
+        onBack={() => router.push('/crm')}
+        onContact={handleContact}
+        onSchedule={handleSchedule}
+      />
 
-          {isEditing ? (
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setIsEditing(false)}
-                disabled={updateCustomerMutation.isPending}
-              >
-                <X className="h-4 w-4" />
-                Cancelar
-              </Button>
-              <Button
-                onClick={form.handleSubmit(onSubmitEdit)}
-                disabled={updateCustomerMutation.isPending}
-                className="flex items-center gap-2"
-              >
-                <Save className="h-4 w-4" />
-                {updateCustomerMutation.isPending ? 'Salvando...' : 'Salvar'}
-              </Button>
-            </div>
-          ) : (
-            <Button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-2"
-            >
-              <Edit className="h-4 w-4" />
-              Editar
-            </Button>
-          )}
-        </div>
-      </div>
+      {/* Customer Statistics Dashboard */}
+      <CustomerStats
+        customer={customerData}
+        interactions={Array.isArray(interactions?.data) ? interactions.data : []}
+        notes={Array.isArray(notes?.data) ? notes.data : []}
+        appointments={Array.isArray(appointments?.data) ? appointments.data : []}
+        loading={isLoading}
+      />
 
+      {/* Main Information Tabs */}
       <Tabs defaultValue="info" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="info">Informações</TabsTrigger>
-          <TabsTrigger value="history">Histórico</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="notes">Anotações</TabsTrigger>
-          <TabsTrigger value="stats">Estatísticas</TabsTrigger>
         </TabsList>
 
         <TabsContent value="info" className="mt-6">
-          <Card>
+          <Card id="customer-info">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
+                <User className="h-5 w-5" aria-hidden="true" />
                 Informações do Cliente
               </CardTitle>
             </CardHeader>
@@ -452,6 +634,25 @@ function ClienteDetalhePage() {
                           </FormItem>
                         )}
                       />
+
+                      <FormField
+                        control={form.control}
+                        name="tags"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Tags</FormLabel>
+                            <FormControl>
+                              <TagInput
+                                value={field.value}
+                                onChange={field.onChange}
+                                suggestions={availableTags || []}
+                                placeholder="Digite e pressione Enter"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
                   </form>
                 </Form>
@@ -495,20 +696,30 @@ function ClienteDetalhePage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="history" className="mt-6">
-          <InteractionTimeline 
-            customerId={customerId}
-            interactions={interactions?.data || []}
-            notes={notes?.data || []}
-            loading={interactions?.isLoading || notes?.isLoading}
-          />
+        <TabsContent value="timeline" className="mt-6">
+          <div id="customer-timeline">
+            <EnhancedInteractionTimeline
+              customerId={customerId}
+              interactions={Array.isArray(interactions?.data) ? interactions.data : []}
+              notes={Array.isArray(notes?.data) ? notes.data : []}
+              loading={interactions?.isLoading || notes?.isLoading}
+              onAddInteraction={(data) => {
+                // Handle interaction creation
+                createInteractionMutation.mutateAsync({
+                  customerId,
+                  data,
+                });
+              }}
+              onAddNote={handleAddNote}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="notes" className="mt-6">
-          <Card>
+          <Card id="customer-notes">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
+                <FileText className="h-5 w-5" aria-hidden="true" />
                 Anotações
               </CardTitle>
             </CardHeader>
@@ -553,39 +764,6 @@ function ClienteDetalhePage() {
               </div>
             </CardContent>
           </Card>
-        </TabsContent>
-
-        <TabsContent value="stats" className="mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Anotações</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{notes?.data?.length || 0}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Interações</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{interactions?.data?.length || 0}</div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Cliente há</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">
-                  {Math.floor((Date.now() - new Date(customerData.createdAt).getTime()) / (1000 * 60 * 60 * 24))} dias
-                </div>
-              </CardContent>
-            </Card>
-          </div>
         </TabsContent>
       </Tabs>
     </DashboardLayout>

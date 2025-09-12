@@ -29,7 +29,9 @@ export const InteractionTimeline: React.FC<InteractionTimelineProps> = ({
   const [expanded, setExpanded] = useState(true);
   const [showAll, setShowAll] = useState(false);
   
-  const visibleInteractions = showAll ? interactions : interactions.slice(0, 5);
+  // Ensure interactions is always an array to prevent runtime errors
+  const safeInteractions = Array.isArray(interactions) ? interactions : [];
+  const visibleInteractions = showAll ? safeInteractions : safeInteractions.slice(0, 5);
 
   const getInteractionIcon = (type: string) => {
     const icons = {
@@ -95,7 +97,7 @@ export const InteractionTimeline: React.FC<InteractionTimelineProps> = ({
     );
   }
 
-  if (interactions.length === 0) {
+  if (safeInteractions.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500">
         <Clock size={48} className="mx-auto mb-4 text-gray-300" />
@@ -116,16 +118,16 @@ export const InteractionTimeline: React.FC<InteractionTimelineProps> = ({
           className="flex items-center gap-2 text-lg font-semibold text-gray-900 hover:text-blue-600 transition-colors"
         >
           {expanded ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-          Histórico de Interações ({interactions.length})
+          Histórico de Interações ({safeInteractions.length})
         </button>
         
-        {interactions.length > 5 && expanded && (
+        {safeInteractions.length > 5 && expanded && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => setShowAll(!showAll)}
           >
-            {showAll ? 'Mostrar Menos' : `Ver Todas (${interactions.length})`}
+            {showAll ? 'Mostrar Menos' : `Ver Todas (${safeInteractions.length})`}
           </Button>
         )}
       </div>
@@ -173,13 +175,13 @@ export const InteractionTimeline: React.FC<InteractionTimelineProps> = ({
           </div>
 
           {/* Mostrar mais/menos se houver muitas interações */}
-          {interactions.length > 5 && !showAll && (
+          {safeInteractions.length > 5 && !showAll && (
             <div className="relative flex gap-4 mt-4">
               <div className="w-8 h-8 flex items-center justify-center">
                 <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
               </div>
               <div className="flex-1 text-center text-gray-500 text-sm italic">
-                {interactions.length - 5} interações mais antigas...
+                {safeInteractions.length - 5} interações mais antigas...
               </div>
             </div>
           )}

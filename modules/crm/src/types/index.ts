@@ -1,5 +1,34 @@
 import { z } from 'zod';
-import { CustomerStatus, InteractionType, NoteType } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+
+// Re-export enums from Prisma schema
+export enum CustomerStatus {
+  ACTIVE = 'ACTIVE',
+  INACTIVE = 'INACTIVE', 
+  PROSPECT = 'PROSPECT',
+  BLOCKED = 'BLOCKED'
+}
+
+export enum InteractionType {
+  CALL = 'CALL',
+  EMAIL = 'EMAIL',
+  MEETING = 'MEETING',
+  WHATSAPP = 'WHATSAPP',
+  SMS = 'SMS',
+  NOTE = 'NOTE',
+  TASK = 'TASK',
+  VISIT = 'VISIT',
+  SERVICE = 'SERVICE'
+}
+
+export enum NoteType {
+  GENERAL = 'GENERAL',
+  IMPORTANT = 'IMPORTANT',
+  REMINDER = 'REMINDER',
+  FOLLOW_UP = 'FOLLOW_UP',
+  COMPLAINT = 'COMPLAINT',
+  COMPLIMENT = 'COMPLIMENT'
+}
 
 // Environment configuration types
 export interface Config {
@@ -64,19 +93,42 @@ export interface CustomerDetails {
   interactions: CustomerInteractionDetails[];
 }
 
+export interface AddressStructured {
+  street?: string;
+  number?: string;
+  complement?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  zipcode?: string;
+  country?: string;
+}
+
 export interface CreateCustomerData {
   name: string;
   email?: string;
   phone?: string;
   document?: string;
-  address?: string;
+  address?: string; // Legacy format for compatibility
   city?: string;
   state?: string;
   zipCode?: string;
   country?: string;
+  // New structured address format
+  addressStructured?: AddressStructured;
   status?: CustomerStatus;
   tags?: string[];
   metadata?: any;
+  // Additional fields
+  profession?: string;
+  source?: string;
+  preferredContact?: string;
+  marketingConsent?: boolean;
+  secondaryPhone?: string;
+  rg?: string;
+  birthDate?: string;
+  gender?: string;
+  maritalStatus?: string;
 }
 
 export interface UpdateCustomerData {
@@ -84,14 +136,26 @@ export interface UpdateCustomerData {
   email?: string;
   phone?: string;
   document?: string;
-  address?: string;
+  address?: string; // Legacy format for compatibility
   city?: string;
   state?: string;
   zipCode?: string;
   country?: string;
+  // New structured address format
+  addressStructured?: AddressStructured;
   status?: CustomerStatus;
   tags?: string[];
   metadata?: any;
+  // Additional fields
+  profession?: string;
+  source?: string;
+  preferredContact?: string;
+  marketingConsent?: boolean;
+  secondaryPhone?: string;
+  rg?: string;
+  birthDate?: string;
+  gender?: string;
+  maritalStatus?: string;
 }
 
 // Customer Notes types
@@ -308,10 +372,13 @@ export const customerSearchSchema = z.object({
 
 export const paginationSchema = z.object({
   page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(10),
+  limit: z.coerce.number().min(1).max(1000).default(1000),
   sortBy: z.string().optional().default('createdAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
+
+// Schema combinado para busca de clientes com paginação
+export const customerSearchWithPaginationSchema = customerSearchSchema.merge(paginationSchema);
 
 export const tagManagementSchema = z.object({
   tags: z.array(z.string().min(1).max(50)).min(1, 'Ao menos uma tag é necessária'),

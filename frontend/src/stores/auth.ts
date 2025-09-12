@@ -181,51 +181,79 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      // Refresh authentication
-      refreshAuth: async () => {
-        const { refreshToken } = get();
+      // Refresh authentication with race condition protection
+      refreshAuth: (() => {
+        let refreshPromise: Promise<void> | null = null;
         
-        if (!refreshToken) {
-          throw new Error('No refresh token available');
-        }
-
-        try {
-          const response = await authApi.refresh(refreshToken);
-          
-          if (response.success) {
-            const { accessToken: newToken, refreshToken: newRefreshToken } = response.data;
-            
-            // Atualizar tokens usando nossa função robusta
-            const saveSuccess = saveTokenToStorage(newToken, newRefreshToken);
-            
-            if (!saveSuccess) {
-              throw new Error('Falha ao salvar novos tokens após refresh');
+        return async (): Promise<void> => {
+          // RACE CONDITION FIX: Return existing promise if refresh is already in progress
+          if (refreshPromise) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('⏳ Token refresh already in progress, waiting...');
             }
-            
-            // Verificar se os novos tokens foram salvos corretamente
-            const verificationToken = getTokenFromStorage();
-            if (verificationToken !== newToken) {
-              throw new Error('Verificação de persistência dos novos tokens falhou');
-            }
-            
-            set({
-              token: newToken,
-              refreshToken: newRefreshToken || refreshToken, // Keep old refresh token if new one not provided
-            });
-            
-            console.log('✅ Token refreshed successfully');
-          } else {
-            throw new Error(response.error || 'Falha na renovação do token');
+            return refreshPromise;
           }
-        } catch (error) {
-          console.error('❌ Token refresh error:', error);
-          // Se falhar, fazer logout
-          get().logout();
-          throw error;
-        }
-      },
+          
+          const { refreshToken } = get();
+          
+          if (!refreshToken) {
+            throw new Error('No refresh token available');
+          }
 
-      // Initialize authentication from localStorage
+          // Create and store refresh promise to prevent race conditions
+          refreshPromise = (async () => {
+            try {
+              if (process.env.NODE_ENV === 'development') {
+                console.log('🔄 Starting token refresh...');
+              }
+              
+              const response = await authApi.refresh(refreshToken);
+              
+              if (response.success) {
+                const { accessToken: newToken, refreshToken: newRefreshToken } = response.data;
+                
+                // Atualizar tokens usando nossa função robusta
+                const saveSuccess = saveTokenToStorage(newToken, newRefreshToken);
+                
+                if (!saveSuccess) {
+                  throw new Error('Falha ao salvar novos tokens após refresh');
+                }
+                
+                // Verificar se os novos tokens foram salvos corretamente
+                const verificationToken = getTokenFromStorage();
+                if (verificationToken !== newToken) {
+                  throw new Error('Verificação de persistência dos novos tokens falhou');
+                }
+                
+                set({
+                  token: newToken,
+                  refreshToken: newRefreshToken || refreshToken, // Keep old refresh token if new one not provided
+                });
+                
+                if (process.env.NODE_ENV === 'development') {
+                  console.log('✅ Token refreshed successfully');
+                }
+              } else {
+                throw new Error(response.error || 'Falha na renovação do token');
+              }
+            } catch (error) {
+              if (process.env.NODE_ENV === 'development') {
+                console.error('❌ Token refresh error:', error);
+              }
+              // Se falhar, fazer logout
+              get().logout();
+              throw error;
+            } finally {
+              // Clear the refresh promise after completion
+              refreshPromise = null;
+            }
+          })();
+          
+          return refreshPromise;
+        };
+      })(),
+
+      // Simplified initialization with better error handling and timeout protection
       initialize: async () => {
         if (typeof window === 'undefined') return;
         
@@ -235,45 +263,39 @@ export const useAuthStore = create<AuthStore>()(
           return;
         }
         
-        set({ status: 'loading', isLoading: true, isInitialized: false });
-        console.log('🔄 Initializing auth store...');
+        set({ status: 'initializing', isLoading: true, isInitialized: false });
+        console.log('🔄 Starting auth store initialization...');
+
+        // Add timeout protection
+        const initializationTimeout = setTimeout(() => {
+          console.warn('⚠️ Auth initialization timeout, forcing completion');
+          set({
+            user: null,
+            company: null,
+            token: null,
+            refreshToken: null,
+            isAuthenticated: false,
+            isLoading: false,
+            status: 'unauthenticated',
+            isInitialized: true,
+          });
+        }, 8000); // 8 second timeout
 
         try {
+          // Get tokens from storage
           const token = getTokenFromStorage();
           const refreshToken = getRefreshTokenFromStorage();
-          const persistedData = localStorage.getItem('erp-nexus-auth');
           
-          // Validar integridade dos tokens se existirem
-          let tokenValid = false;
-          if (token) {
-            try {
-              const parts = token.split('.');
-              if (parts.length === 3) {
-                JSON.parse(atob(parts[0]));
-                JSON.parse(atob(parts[1]));
-                tokenValid = true;
-              }
-            } catch {
-              console.warn('⚠️ Token format validation failed during initialization');
-            }
-          }
-          
-          console.log('🔍 Storage data:', { 
+          console.log('🔍 Initial storage check:', { 
             hasToken: !!token, 
-            hasRefresh: !!refreshToken, 
-            hasPersisted: !!persistedData,
-            tokenValid,
-            tokenLength: token?.length || 0,
-            persistedData: persistedData ? JSON.parse(persistedData) : null
+            hasRefresh: !!refreshToken,
+            tokenLength: token?.length || 0
           });
-          
-          // Se não há tokens ou tokens são inválidos, definir como não autenticado imediatamente
-          if (!token || !refreshToken || !tokenValid) {
-            console.log('❌ No valid tokens found, setting as unauthenticated', {
-              hasToken: !!token,
-              hasRefresh: !!refreshToken,
-              tokenValid
-            });
+
+          // Quick validation: No tokens = not authenticated
+          if (!token || !refreshToken) {
+            console.log('❌ No tokens found, setting as unauthenticated');
+            clearTimeout(initializationTimeout);
             set({
               user: null,
               company: null,
@@ -282,107 +304,90 @@ export const useAuthStore = create<AuthStore>()(
               isAuthenticated: false,
               isLoading: false,
               status: 'unauthenticated',
-              isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
+              isInitialized: true,
+            });
+            clearAllTokens();
+            return;
+          }
+
+          // Basic token format validation (no parsing to avoid hanging)
+          let tokenValid = false;
+          if (token) {
+            try {
+              const parts = token.split('.');
+              tokenValid = parts.length === 3;
+              console.log('🔍 Token format validation:', { tokenValid });
+            } catch (e) {
+              console.warn('⚠️ Token format validation failed:', e);
+            }
+          }
+
+          // If token format is invalid, treat as unauthenticated
+          if (!tokenValid) {
+            console.log('❌ Invalid token format, setting as unauthenticated');
+            clearTimeout(initializationTimeout);
+            clearAllTokens();
+            set({
+              user: null,
+              company: null,
+              token: null,
+              refreshToken: null,
+              isAuthenticated: false,
+              isLoading: false,
+              status: 'unauthenticated',
+              isInitialized: true,
             });
             return;
           }
 
-          // Verificar se os dados do usuário estão disponíveis no Zustand persist
-          const currentState = get();
-          const { user, company } = currentState;
+          // Check for persisted user data
+          const persistedData = localStorage.getItem('erp-nexus-auth');
+          let userData = null;
+          let companyData = null;
           
-          console.log('🔍 Current store state:', { 
-            hasUser: !!user, 
-            hasCompany: !!company, 
-            userEmail: user?.email,
-            fullUser: user
-          });
-          
-          // Se temos tokens mas não temos dados do usuário ou company, validar tokens
-          if (!user || !company) {
-            console.log('⚠️ Missing user/company data, validating tokens...');
-            
+          if (persistedData) {
             try {
-              // Tentar validar token com timeout curto
-              const response = await Promise.race([
-                authApi.validate(),
-                new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error('Token validation timeout')), 3000)
-                )
-              ]);
-              
-              if (response.success && response.data) {
-                // Token válido mas dados não estão no store - limpar e forçar re-login
-                console.log('✅ Token valid but user data missing - forcing re-login');
-                clearAllTokens();
-                set({
-                  user: null,
-                  company: null,
-                  token: null,
-                  refreshToken: null,
-                  isAuthenticated: false,
-                  isLoading: false,
-                  status: 'unauthenticated',
-                  isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
-                });
-                return;
-              }
-            } catch (error) {
-              console.error('❌ Token validation failed:', error);
-              // Token inválido ou erro na validação
-              clearAllTokens();
-              set({
-                user: null,
-                company: null,
-                token: null,
-                refreshToken: null,
-                isAuthenticated: false,
-                isLoading: false,
-                status: 'unauthenticated',
-                isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
-              });
-              return;
+              const parsed = JSON.parse(persistedData);
+              userData = parsed.user;
+              companyData = parsed.company;
+            } catch (e) {
+              console.warn('⚠️ Failed to parse persisted auth data:', e);
             }
           }
-          
-          // Se temos tokens E dados do usuário/company, assumir autenticado
-          if (user && company && token && refreshToken) {
-            console.log('✅ Session restored with user and company data');
+
+          // If we have tokens and user data, restore session
+          if (userData && companyData) {
+            console.log('✅ Restoring authenticated session from persisted data');
+            clearTimeout(initializationTimeout);
             set({
-              user,
-              company,
+              user: userData,
+              company: companyData,
               token,
               refreshToken,
               isAuthenticated: true,
               isLoading: false,
               status: 'authenticated',
-              isInitialized: true, // ✅ CORREÇÃO: Marcar como inicializado
+              isInitialized: true,
             });
-            
-            // Validar token em background sem bloquear UI
+
+            // Background validation (non-blocking)
             setTimeout(async () => {
               try {
                 const response = await authApi.validate();
                 if (!response.success) {
-                  throw new Error('Token validation failed');
+                  console.warn('⚠️ Background token validation failed');
                 }
-                console.log('✅ Background token validation successful');
               } catch (error) {
-                console.warn('⚠️ Background token validation failed, attempting refresh...');
-                try {
-                  await get().refreshAuth();
-                  console.log('✅ Token refreshed successfully');
-                } catch (refreshError) {
-                  console.error('❌ Token refresh failed, logging out...');
-                  await get().logout();
-                }
+                console.warn('⚠️ Background validation error (non-critical):', error);
               }
-            }, 1000); // 1 segundo de delay para não bloquear a UI
+            }, 1000);
+            
             return;
           }
-          
-          // Fallback: limpar estado se chegamos aqui
-          console.log('❌ Fallback: clearing session state');
+
+          // If we have tokens but no user data, clear and set as unauthenticated
+          console.log('⚠️ Has tokens but no user data, clearing and setting as unauthenticated');
+          clearTimeout(initializationTimeout);
           clearAllTokens();
           set({
             user: null,
@@ -396,8 +401,8 @@ export const useAuthStore = create<AuthStore>()(
           });
           
         } catch (error) {
-          console.error('❌ Initialize error:', error);
-          // Em caso de erro, limpar tudo e definir como não autenticado
+          console.error('❌ Critical initialization error:', error);
+          clearTimeout(initializationTimeout);
           clearAllTokens();
           set({
             user: null,

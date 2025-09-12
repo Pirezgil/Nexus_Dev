@@ -183,7 +183,7 @@ export class StatsService {
         SELECT 
           TO_CHAR(created_at, 'YYYY-MM') as month,
           COUNT(*)::bigint as count
-        FROM customers 
+        FROM nexus_crm.customers 
         WHERE company_id = ${companyId} 
           AND created_at >= ${twelveMonthsAgo}
         GROUP BY TO_CHAR(created_at, 'YYYY-MM')
@@ -409,7 +409,7 @@ export class StatsService {
           COUNT(*)::bigint as new_customers,
           0::bigint as new_interactions,
           0::bigint as new_notes
-        FROM customers 
+        FROM nexus_crm.customers 
         WHERE company_id = ${companyId} 
           AND created_at >= ${startDate}
         GROUP BY DATE(created_at)

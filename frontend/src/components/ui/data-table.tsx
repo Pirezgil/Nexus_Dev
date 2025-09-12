@@ -45,7 +45,7 @@ export function DataTable<TData, TValue>({
   const [sorting, setSorting] = useState<SortingState>([]);
 
   // Default pagination if not provided
-  const defaultPagination = { pageIndex: 0, pageSize: 10 };
+  const defaultPagination = { pageIndex: 0, pageSize: 20 };
   const currentPagination = pagination || defaultPagination;
 
   const table = useReactTable({
@@ -155,7 +155,7 @@ export function DataTable<TData, TValue>({
               <p className="text-sm font-medium">Página</p>
               <div className="flex w-[100px] items-center justify-center text-sm font-medium">
                 {(pagination?.pageIndex || 0) + 1} de{" "}
-                {Math.ceil(totalCount / (pagination?.pageSize || 10))}
+                {Math.ceil(totalCount / (pagination?.pageSize || 20))}
               </div>
             </div>
             <div className="flex items-center space-x-2">
@@ -164,7 +164,7 @@ export function DataTable<TData, TValue>({
                 className="h-8 w-8 p-0"
                 onClick={() => onPaginationChange({
                   pageIndex: (pagination?.pageIndex || 0) - 1,
-                  pageSize: pagination?.pageSize || 10,
+                  pageSize: pagination?.pageSize || 20,
                 })}
                 disabled={(pagination?.pageIndex || 0) === 0}
               >
@@ -176,11 +176,11 @@ export function DataTable<TData, TValue>({
                 className="h-8 w-8 p-0"
                 onClick={() => onPaginationChange({
                   pageIndex: (pagination?.pageIndex || 0) + 1,
-                  pageSize: pagination?.pageSize || 10,
+                  pageSize: pagination?.pageSize || 20,
                 })}
                 disabled={
                   (pagination?.pageIndex || 0) >= 
-                  Math.ceil(totalCount / (pagination?.pageSize || 10)) - 1
+                  Math.ceil(totalCount / (pagination?.pageSize || 20)) - 1
                 }
               >
                 <ChevronRight className="h-4 w-4" />

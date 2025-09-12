@@ -1,10 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useCallback } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useCreateCustomer, useCustomerTags } from '@/hooks/api/use-customers';
+import { useDocumentValidation } from '@/hooks/useDocumentValidation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,9 +14,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { TagInput } from '@/components/modules/crm/TagInput';
 import { withAuth } from '@/components/auth/withAuth';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CheckCircle, XCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { Address } from '@/types';
 import { createEmptyAddress, validateAddress, normalizeCEP } from '@/utils/address';
+import { formatDocument } from '@/utils';
+import { transformCustomerFormToApi } from '@/utils/customerDataTransform';
 
 // Schema Zod atualizado para usar estrutura de endereço
 const addressSchema = z.object({
@@ -39,10 +43,73 @@ const customerSchema = z.object({
 
 type CustomerFormData = z.infer<typeof customerSchema>;
 
+// Document Input Component - Moved outside to prevent re-renders
+const DocumentInput = ({ 
+  field, 
+  documentValidation,
+  onChange 
+}: { 
+  field: any; 
+  documentValidation: any;
+  onChange: (value: string) => void;
+}) => (
+  <div className="space-y-2">
+    <div className="relative">
+      <FormControl>
+        <Input
+          placeholder="000.000.000-00"
+          {...field}
+          onChange={(e) => onChange(e.target.value)}
+          className={`
+            ${documentValidation.isDuplicate ? 'border-red-500 pr-10' : ''}
+            ${documentValidation.isValid ? 'border-green-500 pr-10' : ''}
+            ${documentValidation.isLoading ? 'border-blue-500 pr-10' : ''}
+          `}
+        />
+      </FormControl>
+      
+      {/* Validation status icon */}
+      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+        {documentValidation.isLoading && (
+          <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
+        )}
+        {documentValidation.isValid && !documentValidation.isLoading && (
+          <CheckCircle className="h-5 w-5 text-green-500" />
+        )}
+        {documentValidation.isDuplicate && !documentValidation.isLoading && (
+          <XCircle className="h-5 w-5 text-red-500" />
+        )}
+        {documentValidation.error && !documentValidation.isLoading && !documentValidation.isDuplicate && (
+          <AlertCircle className="h-5 w-5 text-yellow-500" />
+        )}
+      </div>
+    </div>
+    
+    {/* Validation message */}
+    {documentValidation.error && (
+      <div className="text-sm text-red-600 flex items-center gap-1">
+        <AlertCircle className="h-4 w-4" />
+        {documentValidation.error}
+      </div>
+    )}
+    
+    {documentValidation.isDuplicate && (
+      <div className="text-sm text-red-600 bg-red-50 p-2 rounded-md">
+        <strong>Atenção:</strong> Já existe um cliente cadastrado com este documento.
+        <br />
+        <span className="text-xs">Verifique se o cliente já está no sistema antes de continuar.</span>
+      </div>
+    )}
+    
+    <FormMessage />
+  </div>
+);
+
 function NovoClientePage() {
   const router = useRouter();
   const createCustomerMutation = useCreateCustomer();
   const { data: availableTags } = useCustomerTags();
+  const documentValidation = useDocumentValidation();
 
   const form = useForm<CustomerFormData>({
     resolver: zodResolver(customerSchema),
@@ -57,15 +124,36 @@ function NovoClientePage() {
     },
   });
 
+  // Handle document validation with debounce - using useCallback to prevent re-renders
+  const handleDocumentChange = useCallback((value: string) => {
+    const formatted = formatDocument(value);
+    form.setValue('document', formatted);
+    
+    // Validate document after formatting
+    if (formatted.replace(/\D/g, '').length >= 11) {
+      documentValidation.validateDocument(formatted);
+    } else {
+      documentValidation.resetValidation();
+    }
+  }, [form, documentValidation]);
+
   const onSubmit = async (data: CustomerFormData) => {
+    // Prevent submission if document is invalid or duplicate
+    if (documentValidation.isDuplicate || documentValidation.error) {
+      return;
+    }
+
     try {
-      await createCustomerMutation.mutateAsync(data);
+      // Transform form data to API format
+      const apiData = transformCustomerFormToApi(data);
+      await createCustomerMutation.mutateAsync(apiData);
       router.push('/crm');
     } catch (error) {
       // Error handled by mutation
     }
   };
 
+  
   return (
     <div>
       {/* Header */}
@@ -154,10 +242,7 @@ function NovoClientePage() {
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>CPF/CNPJ</FormLabel>
-                        <FormControl>
-                          <Input placeholder="000.000.000-00" {...field} />
-                        </FormControl>
-                        <FormMessage />
+                        <DocumentInput field={field} documentValidation={documentValidation} onChange={handleDocumentChange} />
                       </FormItem>
                     )}
                   />
@@ -340,16 +425,43 @@ function NovoClientePage() {
                     type="button"
                     variant="outline"
                     onClick={() => router.back()}
+                    disabled={createCustomerMutation.isPending}
                   >
                     Cancelar
                   </Button>
                   <Button
                     type="submit"
-                    disabled={createCustomerMutation.isPending}
+                    disabled={
+                      createCustomerMutation.isPending ||
+                      documentValidation.isDuplicate ||
+                      documentValidation.isLoading ||
+                      !!documentValidation.error
+                    }
                   >
-                    {createCustomerMutation.isPending ? 'Salvando...' : 'Salvar Cliente'}
+                    {createCustomerMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      'Salvar Cliente'
+                    )}
                   </Button>
                 </div>
+                
+                {/* Status message when document is duplicate */}
+                {documentValidation.isDuplicate && (
+                  <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                    <div className="flex items-center gap-2 text-red-800">
+                      <XCircle className="h-5 w-5" />
+                      <span className="font-medium">Não é possível salvar o cliente</span>
+                    </div>
+                    <p className="text-sm text-red-600 mt-1">
+                      O documento informado já está cadastrado para outro cliente.
+                      Verifique os dados ou utilize outro documento.
+                    </p>
+                  </div>
+                )}
               </form>
             </Form>
           </CardContent>

@@ -57,8 +57,57 @@ if (process.env.NODE_ENV !== 'development') {
   console.log('🚀 Auth rate limiting disabled in development mode');
 }
 
-// Handle OPTIONS requests for CORS
-authRoutes.options('*', (req: Request, res: Response) => {
+// Handle OPTIONS requests for CORS - more specific to avoid conflicts
+authRoutes.options('/login', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/register', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/validate', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/refresh', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/me', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/logout', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/forgot-password', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/reset-password', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/change-password', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/profile', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/password', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+authRoutes.options('/avatar', (req: Request, res: Response) => {
+  handleCorsOptions(req, res);
+});
+
+// Helper function for CORS options
+function handleCorsOptions(req: Request, res: Response) {
   const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:3002',
@@ -75,7 +124,7 @@ authRoutes.options('*', (req: Request, res: Response) => {
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Max-Age', '86400'); // 24 hours
   res.status(204).end();
-});
+}
 
 // Helper function to make requests to user-management service
 const forwardToUserManagement = async (req: Request, res: Response, path: string) => {
@@ -172,6 +221,12 @@ authRoutes.post('/refresh', (req: Request, res: Response) => {
 });
 
 authRoutes.get('/validate', (req: Request, res: Response) => {
+  forwardToUserManagement(req, res, '/auth/validate');
+});
+
+authRoutes.post('/validate', (req: Request, res: Response) => {
+  // Convert POST to GET for user-management service compatibility
+  req.method = 'GET';
   forwardToUserManagement(req, res, '/auth/validate');
 });
 

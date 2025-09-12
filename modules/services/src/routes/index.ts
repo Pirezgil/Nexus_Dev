@@ -22,15 +22,15 @@ const router = Router();
 router.use('/health', healthRoutes);
 
 // Core business logic routes (authentication handled in route modules)
-router.use('/api/services', serviceRoutes);
-router.use('/api/professionals', professionalRoutes);
-router.use('/api/appointments', appointmentRoutes);
+router.use('/services', serviceRoutes);
+router.use('/professionals', professionalRoutes);
+router.use('/appointments', appointmentRoutes);
 
 // Analytics and reporting routes (authentication handled in route modules)
-router.use('/api/reports', reportRoutes);
+router.use('/reports', reportRoutes);
 
 // Integration routes for cross-module communication (authentication handled in route modules)
-router.use('/api/integrations', integrationRoutes);
+router.use('/integrations', integrationRoutes);
 
 // CORREÇÃO: Endpoints específicos para o módulo agendamento
 // O frontend do agendamento espera que os endpoints estejam em /api/services/
@@ -66,61 +66,61 @@ router.get('/api/docs', (req, res) => {
         services: {
           description: 'Service/procedure management endpoints',
           routes: [
-            'GET /api/services - List services',
-            'POST /api/services - Create service',
-            'GET /api/services/:id - Get service details',
-            'PUT /api/services/:id - Update service',
-            'DELETE /api/services/:id - Delete service',
-            'GET /api/services/search - Search services',
-            'GET /api/services/popular - Get popular services',
-            'GET /api/services/categories - Get service categories',
+            'GET /services - List services',
+            'POST /services - Create service',
+            'GET /services/:id - Get service details',
+            'PUT /services/:id - Update service',
+            'DELETE /services/:id - Delete service',
+            'GET /services/search - Search services',
+            'GET /services/popular - Get popular services',
+            'GET /services/categories - Get service categories',
           ],
         },
         professionals: {
           description: 'Professional/staff management endpoints',
           routes: [
-            'GET /api/professionals - List professionals',
-            'POST /api/professionals - Create professional',
-            'GET /api/professionals/:id - Get professional details',
-            'PUT /api/professionals/:id - Update professional',
-            'DELETE /api/professionals/:id - Delete professional',
-            'GET /api/professionals/search - Search professionals',
-            'GET /api/professionals/available - Get available professionals',
-            'PUT /api/professionals/:id/schedule - Update work schedule',
+            'GET /professionals - List professionals',
+            'POST /professionals - Create professional',
+            'GET /professionals/:id - Get professional details',
+            'PUT /professionals/:id - Update professional',
+            'DELETE /professionals/:id - Delete professional',
+            'GET /professionals/search - Search professionals',
+            'GET /professionals/available - Get available professionals',
+            'PUT /professionals/:id/schedule - Update work schedule',
           ],
         },
         appointments: {
           description: 'Appointment and service completion tracking',
           routes: [
-            'GET /api/appointments/completed - List completed appointments',
-            'POST /api/appointments/completed - Create completed appointment',
-            'GET /api/appointments/:id - Get appointment details',
-            'PUT /api/appointments/:id - Update appointment',
-            'POST /api/appointments/:id/photos - Upload photos',
-            'GET /api/appointments/today - Today\'s appointments',
-            'GET /api/appointments/revenue - Revenue summary',
+            'GET /appointments/completed - List completed appointments',
+            'POST /appointments/completed - Create completed appointment',
+            'GET /appointments/:id - Get appointment details',
+            'PUT /appointments/:id - Update appointment',
+            'POST /appointments/:id/photos - Upload photos',
+            'GET /appointments/today - Today\'s appointments',
+            'GET /appointments/revenue - Revenue summary',
           ],
         },
         reports: {
           description: 'Analytics and reporting endpoints',
           routes: [
-            'GET /api/reports/daily - Daily report',
-            'GET /api/reports/weekly - Weekly summary',
-            'GET /api/reports/monthly - Monthly summary',
-            'GET /api/reports/dashboard - Dashboard metrics',
-            'GET /api/reports/professional/:id - Professional performance',
-            'GET /api/reports/services - Service analytics',
-            'GET /api/reports/financial - Financial report',
+            'GET /reports/daily - Daily report',
+            'GET /reports/weekly - Weekly summary',
+            'GET /reports/monthly - Monthly summary',
+            'GET /reports/dashboard - Dashboard metrics',
+            'GET /reports/professional/:id - Professional performance',
+            'GET /reports/services - Service analytics',
+            'GET /reports/financial - Financial report',
           ],
         },
         integrations: {
           description: 'Cross-module integration endpoints',
           routes: [
-            'GET /api/integrations/customers/:id - Get customer from CRM',
-            'GET /api/integrations/customers/search - Search customers',
-            'POST /api/integrations/customers/:id/notes - Create customer note',
-            'GET /api/integrations/health/modules - Module health status',
-            'GET /api/integrations/connectivity/test/:module - Test connectivity',
+            'GET /integrations/customers/:id - Get customer from CRM',
+            'GET /integrations/customers/search - Search customers',
+            'POST /integrations/customers/:id/notes - Create customer note',
+            'GET /integrations/health/modules - Module health status',
+            'GET /integrations/connectivity/test/:module - Test connectivity',
           ],
         },
       },
@@ -183,11 +183,11 @@ router.use('/api/*', (req, res) => {
     code: 'API_ENDPOINT_NOT_FOUND',
     suggestion: 'Check the API documentation at /api/docs',
     availableEndpoints: [
-      '/api/services',
-      '/api/professionals', 
-      '/api/appointments',
-      '/api/reports',
-      '/api/integrations',
+      '/services',
+      '/professionals', 
+      '/appointments',
+      '/reports',
+      '/integrations',
     ],
   });
 });
@@ -204,11 +204,11 @@ router.get('/api', (req, res) => {
       endpoints: {
         documentation: '/api/docs',
         health: '/health',
-        services: '/api/services',
-        professionals: '/api/professionals',
-        appointments: '/api/appointments',
-        reports: '/api/reports',
-        integrations: '/api/integrations',
+        services: '/services',
+        professionals: '/professionals',
+        appointments: '/appointments',
+        reports: '/reports',
+        integrations: '/integrations',
       },
     },
   });

@@ -10,7 +10,7 @@ import { QueryClient, DefaultOptions } from '@tanstack/react-query';
 const queryConfig: DefaultOptions = {
   queries: {
     // Cache strategies baseadas no tipo de dado
-    staleTime: 5 * 60 * 1000, // 5 minutes (dados ficam "fresh")
+    staleTime: 1 * 60 * 1000, // 1 minute (dados ficam "fresh" - reduzido para melhor reatividade)
     gcTime: 10 * 60 * 1000, // 10 minutes (garbage collection)
     
     // Retry logic inteligente
@@ -193,6 +193,8 @@ export const invalidateQueries = {
   // Invalidate all customer related queries
   customers: () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.customers.all });
+    queryClient.invalidateQueries({ queryKey: queryKeys.customers.lists() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.customers.details() });
   },
   
   // Invalidate customer specific data

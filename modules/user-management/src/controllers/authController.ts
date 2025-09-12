@@ -13,7 +13,9 @@ import {
 import { logger } from '../utils/logger';
 import { UserService } from '../services/userService';
 import { UserRole, UserStatus } from '@prisma/client';
-import { prisma } from '../utils/database';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 export class AuthController {
   /**
@@ -116,7 +118,18 @@ export class AuthController {
       }
 
       const token = authHeader.substring(7);
-      const payload = await AuthService.validateToken(token);
+      
+      // Check if this is a gateway request
+      const isGatewayRequest = req.headers['x-gateway-source'] === 'nexus-api-gateway';
+      
+      let payload;
+      if (isGatewayRequest) {
+        // For gateway requests, use a simpler validation that doesn't require fingerprint
+        payload = await AuthService.validateTokenForGateway(token);
+      } else {
+        // For direct client requests, use the full validation
+        payload = await AuthService.validateToken(token);
+      }
 
       if (!payload) {
         const response: ApiResponse = {

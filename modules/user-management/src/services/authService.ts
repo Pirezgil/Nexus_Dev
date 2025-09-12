@@ -18,7 +18,9 @@ import {
 import { config } from '../utils/config';
 import { logger } from '../utils/logger';
 import { SessionStore, Cache } from '../utils/redis';
+import { secureJwtManager } from '../utils/secureJwt';
 import { emailService } from './emailService';
+import { notificationClient } from './notificationClient';
 
 const prisma = new PrismaClient();
 
@@ -166,6 +168,23 @@ export class AuthService {
           inputPassword: data.password,
           storedHash: user.password
         });
+
+        // Send failed login notification
+        try {
+          await notificationClient.notifyFailedLogin(
+            user.companyId,
+            user.id,
+            user.email,
+            deviceInfo?.ipAddress,
+            deviceInfo?.userAgent
+          );
+        } catch (notificationError) {
+          logger.warn('Failed to send failed login notification', {
+            userId: user.id,
+            error: notificationError
+          });
+        }
+
         throw new UnauthorizedError('Email ou senha incorretos');
       }
 
@@ -188,10 +207,14 @@ export class AuthService {
         permissions,
       };
 
-      // Generate tokens
-      const accessToken = jwt.sign(jwtPayload, config.jwtSecret, {
-        expiresIn: config.jwtExpiresIn,
-      } as jwt.SignOptions);
+      // Generate tokens using secure JWT manager
+      const bindingInfo = {
+        sessionId,
+        ipAddress: deviceInfo?.ipAddress || 'unknown',
+        userAgent: deviceInfo?.userAgent || 'unknown'
+      };
+
+      const accessToken = secureJwtManager.generateAccessToken(jwtPayload, bindingInfo);
 
       const refreshToken = jwt.sign(
         { sessionId, userId: user.id },
@@ -261,6 +284,22 @@ export class AuthService {
         ipAddress: deviceInfo?.ipAddress,
         userAgent: deviceInfo?.userAgent,
       });
+
+      // Send login success notification
+      try {
+        await notificationClient.notifySuccessfulLogin(
+          user.companyId,
+          user.id,
+          user.email,
+          deviceInfo?.ipAddress,
+          deviceInfo?.userAgent
+        );
+      } catch (notificationError) {
+        logger.warn('Failed to send login success notification', {
+          userId: user.id,
+          error: notificationError
+        });
+      }
 
       return {
         user: userSummary,
@@ -362,10 +401,25 @@ export class AuthService {
         expiresIn: config.jwtExpiresIn,
       } as jwt.SignOptions);
 
-      // Update session with new access token
+      // Generate new refresh token to maintain security
+      const newRefreshToken = jwt.sign(
+        { sessionId, userId: session.user.id },
+        config.jwtSecret,
+        { expiresIn: config.jwtRefreshExpiresIn } as jwt.SignOptions
+      );
+
+      // Update refresh token expiration
+      const refreshTokenExpiresAt = new Date();
+      refreshTokenExpiresAt.setDate(refreshTokenExpiresAt.getDate() + 7); // 7 days
+
+      // Update session with new tokens
       await prisma.session.update({
         where: { id: sessionId },
-        data: { accessToken: newAccessToken },
+        data: { 
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
+          expiresAt: refreshTokenExpiresAt
+        },
       });
 
       // Update Redis session
@@ -386,6 +440,7 @@ export class AuthService {
       
       return {
         accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
         expiresIn: expiresInHours * 60 * 60, // hours in seconds
       };
     } catch (error) {
@@ -401,12 +456,131 @@ export class AuthService {
    */
   static async validateToken(accessToken: string): Promise<JwtPayload | null> {
     try {
-      // Verify JWT token
-      const decoded = jwt.verify(accessToken, config.jwtSecret) as JwtPayload;
+      // For API gateway validation, we need to use a simpler approach
+      // since we don't have the original client context for fingerprint validation
+      
+      // First, try to validate with SecureJwtManager using minimal binding info
+      try {
+        const bindingInfo = {
+          sessionId: 'gateway-validation',
+          ipAddress: '127.0.0.1',
+          userAgent: 'nexus-api-gateway'
+        };
+        
+        const decoded = secureJwtManager.verifyAccessToken(accessToken, bindingInfo);
+        
+        // Check if session exists in Redis first (faster)
+        const cachedSession = await SessionStore.get(decoded.sessionId);
+        if (cachedSession) {
+          return cachedSession;
+        }
+
+        // If not in Redis, check database
+        const session = await prisma.session.findFirst({
+          where: {
+            id: decoded.sessionId,
+            isRevoked: false,
+            expiresAt: {
+              gt: new Date(),
+            },
+          },
+          include: {
+            user: {
+              select: {
+                status: true,
+              },
+            },
+          },
+        });
+
+        if (!session || session.user.status !== 'ACTIVE') {
+          return null;
+        }
+
+        return decoded;
+      } catch (secureError) {
+        // Fallback to legacy JWT validation for backward compatibility
+        logger.warn('Secure JWT validation failed, trying fallback', { 
+          error: secureError instanceof Error ? secureError.message : 'Unknown error' 
+        });
+        
+        const decoded = jwt.verify(accessToken, config.jwtSecret) as JwtPayload;
+
+        // Check if session exists in Redis first (faster)
+        const cachedSession = await SessionStore.get(decoded.sessionId);
+        if (cachedSession) {
+          return cachedSession;
+        }
+
+        // If not in Redis, check database
+        const session = await prisma.session.findFirst({
+          where: {
+            id: decoded.sessionId,
+            isRevoked: false,
+            expiresAt: {
+              gt: new Date(),
+            },
+          },
+          include: {
+            user: {
+              select: {
+                status: true,
+              },
+            },
+          },
+        });
+
+        if (!session || session.user.status !== 'ACTIVE') {
+          return null;
+        }
+
+        return decoded;
+      }
+    } catch (error) {
+      logger.warn('Token validation failed', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Validate access token for API gateway (simplified validation)
+   * Bypasses fingerprint validation for gateway-to-service communication
+   */
+  static async validateTokenForGateway(accessToken: string): Promise<JwtPayload | null> {
+    try {
+      logger.info('🔍 [DEBUG] Gateway token validation started', {
+        tokenPreview: accessToken.substring(0, 20) + '...',
+        timestamp: new Date().toISOString()
+      });
+
+      // Try to decode the token first to get the payload
+      const decoded = jwt.decode(accessToken) as JwtPayload;
+      if (!decoded || !decoded.sessionId) {
+        logger.error('❌ [DEBUG] Token decode failed or missing sessionId', {
+          tokenPreview: accessToken.substring(0, 20) + '...',
+          hasDecoded: !!decoded,
+          hasSessionId: !!(decoded && decoded.sessionId)
+        });
+        return null;
+      }
+
+      logger.info('✅ [DEBUG] Token decoded successfully', {
+        userId: decoded.userId,
+        sessionId: decoded.sessionId,
+        hasIss: !!decoded.iss,
+        hasAud: !!decoded.aud,
+        hasJti: !!decoded.jti,
+        hasFingerprint: !!decoded.fingerprint
+      });
 
       // Check if session exists in Redis first (faster)
       const cachedSession = await SessionStore.get(decoded.sessionId);
       if (cachedSession) {
+        logger.info('✅ [DEBUG] Session found in Redis', {
+          sessionId: decoded.sessionId
+        });
         return cachedSession;
       }
 
@@ -414,7 +588,6 @@ export class AuthService {
       const session = await prisma.session.findFirst({
         where: {
           id: decoded.sessionId,
-          accessToken,
           isRevoked: false,
           expiresAt: {
             gt: new Date(),
@@ -430,11 +603,62 @@ export class AuthService {
       });
 
       if (!session || session.user.status !== 'ACTIVE') {
+        logger.error('❌ [DEBUG] Session not found or user inactive', {
+          sessionId: decoded.sessionId,
+          sessionExists: !!session,
+          userStatus: session?.user.status
+        });
         return null;
       }
 
-      return decoded;
+      logger.info('✅ [DEBUG] Session validated in database', {
+        sessionId: decoded.sessionId,
+        userStatus: session.user.status
+      });
+
+      // Verify the token signature using the appropriate secret
+      try {
+        logger.info('🔐 [DEBUG] Trying SecureJwtManager validation...');
+        // Try with SecureJwtManager first
+        const bindingInfo = {
+          sessionId: decoded.sessionId,
+          ipAddress: '127.0.0.1',
+          userAgent: 'nexus-api-gateway'
+        };
+        
+        const verified = secureJwtManager.verifyAccessToken(accessToken, bindingInfo);
+        logger.info('✅ [DEBUG] SecureJwtManager validation successful', {
+          userId: verified.userId,
+          sessionId: verified.sessionId
+        });
+        return verified;
+      } catch (secureError) {
+        logger.warn('⚠️ [DEBUG] SecureJwtManager validation failed, trying legacy...', { 
+          secureError: secureError instanceof Error ? secureError.message : 'Unknown error'
+        });
+        
+        // Fallback to legacy JWT validation
+        try {
+          logger.info('🔐 [DEBUG] Trying legacy JWT validation...');
+          const verified = jwt.verify(accessToken, config.jwtSecret) as JwtPayload;
+          logger.info('✅ [DEBUG] Legacy JWT validation successful', {
+            userId: verified.userId,
+            sessionId: verified.sessionId
+          });
+          return verified;
+        } catch (legacyError) {
+          logger.error('❌ [DEBUG] Gateway token validation failed with both methods', { 
+            secureError: secureError instanceof Error ? secureError.message : 'Unknown error',
+            legacyError: legacyError instanceof Error ? legacyError.message : 'Unknown error'
+          });
+          return null;
+        }
+      }
     } catch (error) {
+      logger.error('❌ [DEBUG] Gateway token validation failed with exception', { 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        tokenPreview: accessToken.substring(0, 20) + '...'
+      });
       return null;
     }
   }
@@ -605,6 +829,20 @@ export class AuthService {
         email: user.email,
         timestamp: new Date(),
       });
+
+      // Send password reset notification
+      try {
+        await notificationClient.notifyPasswordReset(
+          user.companyId,
+          user.id,
+          user.email
+        );
+      } catch (notificationError) {
+        logger.warn('Failed to send password reset notification', {
+          userId: user.id,
+          error: notificationError
+        });
+      }
 
       // Create audit log for password reset
       await prisma.auditLog.create({

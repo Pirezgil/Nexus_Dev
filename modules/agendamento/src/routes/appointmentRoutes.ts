@@ -15,21 +15,37 @@ import {
   validateAppointmentPermissions,
   logAppointmentOperation 
 } from '../middleware/appointmentValidation';
-// TEMPORARIAMENTE DESABILITADO - Problema com path do shared middleware
-// import { 
-//   requirePermission, 
-//   validateOwnership,
-//   logAccess 
-// } from '../../../../shared/middleware/permissionValidation';
+// Import proper authentication middleware
+import { authenticate, enforceCompanyAccess, requirePermission as requireCRMPermission } from '../middleware/auth';
+import { 
+  requirePermission, 
+  validateOwnership,
+  logAccess 
+} from '../../../../shared/middleware/permissionValidation';
 
-// Mock functions para permitir execução temporariamente
-const requirePermission = (opts: any) => (req: any, res: any, next: any) => next();
-const validateOwnership = (table: string, prisma: any) => (req: any, res: any, next: any) => next();  
-const logAccess = (action: string) => (req: any, res: any, next: any) => next();
-const sanitizeStrings = (req: any, res: any, next: any) => next();
+// Security middleware for string sanitization
+const sanitizeStrings = (req: any, res: any, next: any) => {
+  const sanitizeObj = (obj: any) => {
+    for (const key in obj) {
+      if (typeof obj[key] === 'string') {
+        obj[key] = obj[key].trim().replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      } else if (typeof obj[key] === 'object' && obj[key] !== null) {
+        sanitizeObj(obj[key]);
+      }
+    }
+  };
+  
+  if (req.body) sanitizeObj(req.body);
+  if (req.query) sanitizeObj(req.query);
+  next();
+};
 import { prisma } from '../utils/database';
 
 const router = Router();
+
+// Apply authentication and company isolation to all routes
+router.use(authenticate);
+router.use(enforceCompanyAccess);
 
 // GET /appointments - Lista agendamentos com filtros
 router.get('/', 

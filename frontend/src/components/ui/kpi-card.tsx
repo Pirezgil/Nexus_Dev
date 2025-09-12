@@ -1,16 +1,20 @@
 'use client';
 
-import { LucideIcon } from 'lucide-react';
+import React from 'react';
+import { LucideIcon, TrendingUp, TrendingDown } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
 interface KPICardProps {
   title: string;
   value: string | number;
-  change?: string;
+  change?: number;
   icon: LucideIcon;
   trend?: 'up' | 'down' | 'neutral';
   loading?: boolean;
   className?: string;
+  variant?: 'primary' | 'success' | 'warning' | 'error' | 'secondary';
+  onClick?: () => void;
 }
 
 const KPICard = ({
@@ -24,39 +28,37 @@ const KPICard = ({
 }: KPICardProps) => {
   if (loading) {
     return (
-      <div className={cn(
-        "bg-white p-6 rounded-lg shadow-sm border animate-pulse",
-        className
-      )}>
+      <Card className={cn("transition-all duration-200", className)}>
+        <CardContent className="p-6">
         <div className="flex items-center justify-between">
           <div className="space-y-3 flex-1">
-            <div className="h-4 bg-gray-200 rounded w-24"></div>
-            <div className="h-8 bg-gray-200 rounded w-16"></div>
-            <div className="h-3 bg-gray-200 rounded w-20"></div>
+            <div className="h-4 bg-muted rounded animate-pulse w-24"></div>
+            <div className="h-8 bg-muted rounded animate-pulse w-16"></div>
+            <div className="h-3 bg-muted rounded animate-pulse w-20"></div>
           </div>
-          <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+          <div className="w-12 h-12 bg-muted rounded-lg animate-pulse"></div>
         </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
+  // ✅ Design system colors
   const trendColors = {
-    up: 'text-green-600',
-    down: 'text-red-600',
-    neutral: 'text-gray-600'
+    up: 'text-success',
+    down: 'text-error',
+    neutral: 'text-muted-foreground'
   };
 
-  const iconBgColors = {
-    up: 'bg-green-100',
-    down: 'bg-red-100',
-    neutral: 'bg-blue-100'
+  const variantStyles = {
+    primary: { bg: 'bg-primary/10', icon: 'text-primary', border: 'border-primary/20' },
+    success: { bg: 'bg-success/10', icon: 'text-success', border: 'border-success/20' },
+    warning: { bg: 'bg-warning/10', icon: 'text-warning', border: 'border-warning/20' },
+    error: { bg: 'bg-error/10', icon: 'text-error', border: 'border-error/20' },
+    secondary: { bg: 'bg-muted', icon: 'text-muted-foreground', border: 'border-muted' }
   };
 
-  const iconColors = {
-    up: 'text-green-600',
-    down: 'text-red-600',
-    neutral: 'text-blue-600'
-  };
+  const styles = variantStyles[variant];
 
   return (
     <div className={cn(

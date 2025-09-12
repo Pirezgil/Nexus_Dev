@@ -170,6 +170,59 @@ services:
       retries: 3
       start_period: 40s
 
+  # Notifications Module - Sistema unificado de notificações
+  nexus-notifications:
+    build:
+      context: .
+      dockerfile: ./modules/notifications/Dockerfile
+    container_name: nexus-notifications
+    restart: unless-stopped
+    ports:
+      - "5006:5006"
+    environment:
+      - NODE_ENV=development
+      - PORT=5006
+      - DATABASE_URL=postgresql://nexus_user:nexus_password@nexus-postgres:5432/nexus_erp
+      - REDIS_URL=redis://nexus-redis:6379
+      - USER_MANAGEMENT_URL=http://nexus-user-management:3000
+      - CRM_URL=http://nexus-crm:3000
+      - SERVICES_URL=http://nexus-services:3000
+      - AGENDAMENTO_URL=http://nexus-agendamento:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - GATEWAY_HMAC_SECRET=99dab0e1ccf1cdfc694ec3aed909bb221875b2f93bc58ba5187462e841d96a76
+      # Configurações de notificação
+      - SENDGRID_API_KEY=your-sendgrid-api-key
+      - TWILIO_ACCOUNT_SID=your-twilio-account-sid
+      - TWILIO_AUTH_TOKEN=your-twilio-auth-token
+      - FIREBASE_PROJECT_ID=your-firebase-project-id
+      - WEBSOCKET_CORS_ORIGIN=http://localhost:5000,http://nexus-nginx
+      # ⏱️ Política Centralizada de Timeouts
+      - TIMEOUT_HEALTH_CHECK=5000
+      - TIMEOUT_QUICK_OPERATIONS=10000
+      - TIMEOUT_INTERNAL_SERVICE=25000
+      - TIMEOUT_API_CLIENT=30000
+      - TIMEOUT_GATEWAY=60000
+      - TIMEOUT_EXTERNAL_API=60000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nexus-user-management:
+        condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+      nexus-services:
+        condition: service_healthy
+    networks:
+      - nexus-network
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   # Agendamento Module
   # ⚠️ PROBLEMA IDENTIFICADO: TransformError no build - necessário investigar Dockerfile ou dependências
   # Movido da porta 5002 para 5008 para resolver conflito com módulo Auth
@@ -189,6 +242,7 @@ services:
       - USER_MANAGEMENT_URL=http://nexus-user-management:3000
       - CRM_URL=http://nexus-crm:3000
       - SERVICES_URL=http://nexus-services:3000
+      - JWT_SECRET=your-super-secret-jwt-key-change-in-production
       # WhatsApp Business API Configuration
       - WHATSAPP_PHONE_NUMBER_ID=your-phone-number-id-here
       - WHATSAPP_ACCESS_TOKEN=your-access-token-here
@@ -269,6 +323,12 @@ services:
         condition: service_started
       nexus-user-management:
         condition: service_healthy
+      nexus-crm:
+        condition: service_healthy
+      nexus-services:
+        condition: service_healthy
+      nexus-agendamento:
+        condition: service_healthy
     networks:
       - nexus-network
     healthcheck:
@@ -294,6 +354,7 @@ services:
       - CRM_URL=http://nexus-crm:3000
       - SERVICES_URL=http://nexus-services:3000
       - AGENDAMENTO_URL=http://nexus-agendamento:3000
+      - NOTIFICATIONS_URL=http://nexus-notifications:5006
       - FRONTEND_URL=http://nexus-frontend:3000
       - CORS_ORIGINS=http://nexus-nginx,http://nexus-nginx:80,http://localhost:5000,http://localhost:80
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
@@ -307,6 +368,7 @@ services:
       - TIMEOUT_GATEWAY_CRM=60000
       - TIMEOUT_GATEWAY_SERVICES=60000
       - TIMEOUT_GATEWAY_AGENDAMENTO=60000
+      - TIMEOUT_GATEWAY_NOTIFICATIONS=60000
       - TIMEOUT_EXTERNAL_API=60000
     depends_on:
       postgres:
@@ -314,6 +376,8 @@ services:
       redis:
         condition: service_healthy
       nexus-user-management:
+        condition: service_healthy
+      nexus-notifications:
         condition: service_healthy
     networks:
       - nexus-network

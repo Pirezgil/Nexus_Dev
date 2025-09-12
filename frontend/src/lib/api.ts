@@ -238,10 +238,10 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
     }
   );
 
-  // Interceptor de Response - Tratamento de erros e tokens
+  // Enhanced Response Interceptor - Better token refresh handling
   instance.interceptors.response.use(
     (response) => {
-      // Log da resposta em desenvolvimento com mais detalhes
+      // Log successful responses in development
       if (process.env.NODE_ENV === 'development') {
         console.log(`✅ API Response: ${response.config.url}`, {
           status: response.status,
@@ -257,14 +257,22 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
     async (error) => {
       const originalRequest = error.config;
       
-      // Token expirado ou não autorizado - tentar renovar apenas para 401
-      if (error.response?.status === 401 && !originalRequest._retry) {
+      // Enhanced 401 handling with better retry logic
+      if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url?.includes('/refresh')) {
+        // Prevent refresh loops - don't refresh during refresh requests
+        if (originalRequest.url?.includes('/auth/refresh')) {
+          console.error('❌ Refresh token expired or invalid, forcing logout');
+          redirectToLogin();
+          return Promise.reject(error);
+        }
+
         if (isRefreshing) {
-          // Se já está renovando, adicionar à fila de espera
+          // Add to queue if already refreshing
           return new Promise((resolve, reject) => {
             failedQueue.push({ resolve, reject });
           }).then((token) => {
             if (token) {
+              originalRequest.headers = originalRequest.headers || {};
               originalRequest.headers.Authorization = `Bearer ${token}`;
             }
             return instance(originalRequest);
@@ -273,64 +281,44 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
           });
         }
 
+        // Start refresh process
         originalRequest._retry = true;
         isRefreshing = true;
         
         try {
-          // Verificar se existe refresh token antes de tentar renovar
           const refreshToken = getRefreshToken();
           if (!refreshToken) {
-            console.warn('⚠️ No refresh token available, redirecting to login');
+            console.warn('⚠️ No refresh token available for 401 retry, redirecting to login');
             throw new Error('No refresh token available');
           }
 
-          console.log('🔄 Attempting token refresh for failed request:', originalRequest.url);
+          console.log('🔄 Starting token refresh for 401 error:', originalRequest.url);
           const newToken = await refreshAuthToken();
           
-          console.log('🔄 Token refresh result:', {
-            success: !!newToken,
-            tokenPreview: newToken ? newToken.substring(0, 20) + '...' : 'null',
-            originalUrl: originalRequest.url
-          });
-          
           if (newToken) {
-            // Verificar novamente se o token foi persistido corretamente
-            const persistedToken = getAuthToken();
-            if (persistedToken !== newToken) {
-              console.error('❌ Token persistence mismatch after refresh');
-              throw new Error('Token persistence failed after refresh');
-            }
-            
-            // Processar fila de requisições pendentes
+            // Process queued requests
             processQueue(null, newToken);
             
-            // Atualizar o header da requisição original de forma mais robusta
-            if (!originalRequest.headers) {
-              originalRequest.headers = {};
-            }
+            // Retry original request with new token
+            originalRequest.headers = originalRequest.headers || {};
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
             
-            console.log('✅ Retrying original request with refreshed token:', {
-              url: originalRequest.url,
-              tokenPreview: newToken.substring(0, 20) + '...',
-              authHeaderSet: !!originalRequest.headers.Authorization
-            });
-            
+            console.log('✅ Retrying request with fresh token:', originalRequest.url);
             return instance(originalRequest);
           } else {
-            throw new Error('Failed to get new token after refresh');
+            throw new Error('Token refresh returned null');
           }
         } catch (refreshError: any) {
-          console.error('❌ Token refresh failed for request:', {
+          console.error('❌ Token refresh failed:', {
             originalUrl: originalRequest.url,
             error: refreshError.message,
-            response: refreshError.response?.data
+            status: refreshError.response?.status
           });
           
-          // Processar fila com erro
+          // Process queue with error
           processQueue(refreshError, null);
           
-          // Falha na renovação - redirecionar para login
+          // Force logout on refresh failure
           redirectToLogin();
           return Promise.reject(refreshError);
         } finally {
@@ -338,23 +326,33 @@ const createApiInstance = (baseURL: string): AxiosInstance => {
         }
       }
       
-      // Para 403, não tentar refresh - é um erro de permissão
+      // Handle 403 errors (permission denied) - don't retry
       if (error.response?.status === 403) {
-        console.warn('⚠️ Access forbidden - insufficient permissions');
+        console.warn('⚠️ Access forbidden - insufficient permissions for:', error.config?.url);
       }
       
-      // Log do erro com mais contexto
-      console.error('❌ API Error:', {
+      // Handle network errors and timeouts
+      if (!error.response) {
+        console.error('❌ Network error or timeout:', {
+          url: error.config?.url,
+          message: error.message,
+          code: error.code
+        });
+      }
+      
+      // Enhanced error logging
+      console.error('❌ API Error Details:', {
         url: error.config?.url,
         method: error.config?.method?.toUpperCase(),
         status: error.response?.status,
         statusText: error.response?.statusText,
         message: error.response?.data?.message || error.message,
         errorCode: error.code,
+        hasToken: !!getAuthToken(),
         hasRefreshToken: !!getRefreshToken(),
         wasRetry: error.config?._retry,
         responseData: error.response?.data,
-        requestId: error.config?.headers?.['x-request-id'] || 'unknown'
+        timestamp: new Date().toISOString()
       });
       
       return Promise.reject(error);
@@ -450,10 +448,12 @@ const refreshAuthToken = async (): Promise<string | null> => {
       });
       
       if (response.data?.success && response.data?.data) {
-        const { token, refreshToken: newRefreshToken } = response.data.data;
+        // Backend returns { accessToken: "...", refreshToken: "...", expiresIn: 3600 }
+        const { accessToken, refreshToken: newRefreshToken } = response.data.data;
+        const token = accessToken; // Backend uses 'accessToken' key
         
         if (!token) {
-          throw new Error('No token in refresh response');
+          throw new Error('No access token in refresh response');
         }
         
         // Validar formato do novo token
@@ -461,8 +461,15 @@ const refreshAuthToken = async (): Promise<string | null> => {
           throw new Error('Invalid token format received from server');
         }
         
+        // Use the new refresh token provided by backend (backend always returns new one)
+        const tokenToSave = newRefreshToken;
+        
+        if (!tokenToSave) {
+          throw new Error('No refresh token in refresh response');
+        }
+        
         // Salvar novos tokens usando o manager robusto
-        const saveSuccess = TokenPersistenceManager.saveToken(token, newRefreshToken);
+        const saveSuccess = TokenPersistenceManager.saveToken(token, tokenToSave);
         
         if (!saveSuccess) {
           throw new Error('Failed to persist new token');
@@ -477,6 +484,7 @@ const refreshAuthToken = async (): Promise<string | null> => {
         console.log('✅ Token refreshed and verified successfully:', {
           tokenPreview: token.substring(0, 20) + '...',
           hasNewRefreshToken: !!newRefreshToken,
+          keptExistingRefreshToken: !newRefreshToken && !!tokenToSave,
           persistenceVerified: true
         });
         
@@ -684,13 +692,35 @@ export const authApi = {
   logout: () => apiPost(api, `${API_ROUTES.auth}/logout`),
 };
 
+export const usersApi = {
+  // Users CRUD
+  getUsers: (params?: any) => apiGet(api, '/api/users', params),
+  getUser: (id: string) => apiGet(api, `/api/users/${id}`),
+  createUser: (data: any) => apiPost(api, '/api/users', data),
+  updateUser: (id: string, data: any) => apiPut(api, `/api/users/${id}`, data),
+  deleteUser: (id: string) => apiDelete(api, `/api/users/${id}`),
+  
+  // User search and stats
+  searchUsers: (params?: any) => apiGet(api, '/api/users/search', params),
+  getUserStats: () => apiGet(api, '/api/users/stats'),
+  
+  // User profile
+  getProfile: () => apiGet(api, '/api/users/profile'),
+  updateProfile: (data: any) => apiPut(api, '/api/users/profile', data),
+  
+  // User status actions
+  activateUser: (id: string) => apiPost(api, `/api/users/${id}/activate`),
+  deactivateUser: (id: string) => apiPost(api, `/api/users/${id}/deactivate`),
+  resetUserPassword: (id: string, data?: any) => apiPost(api, `/api/users/${id}/reset-password`, data),
+};
+
 export const crmApiMethods = {
   // Customers CRUD
   getCustomers: (params?: any) => apiGet(api, `${API_ROUTES.crm}/customers`, params),
   getCustomer: (id: string) => apiGet(api, `${API_ROUTES.crm}/customers/${id}`),
   createCustomer: (data: any) => apiPost(api, `${API_ROUTES.crm}/customers`, data),
   updateCustomer: (id: string, data: any) => apiPut(api, `${API_ROUTES.crm}/customers/${id}`, data),
-  deleteCustomer: (id: string) => apiDelete(api, `${API_ROUTES.crm}/customers/${id}`),
+  inactivateCustomer: (id: string) => apiPost(api, `${API_ROUTES.crm}/customers/${id}/inactivate`),
   
   // Customer search
   searchCustomers: (params?: any) => apiGet(api, `${API_ROUTES.crm}/customers/search`, params),
@@ -781,6 +811,7 @@ export default {
   api,
   // Module-specific convenience methods
   auth: authApi,
+  users: usersApi,
   crm: crmApiMethods,
   services: servicesApiMethods,
   agendamento: agendamentoApiMethods,

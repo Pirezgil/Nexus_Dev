@@ -34,9 +34,8 @@ export const authenticate = async (
 
     // Try to validate token via User Management service first
     try {
-      const response = await axios.post(
-        `${config.userManagementUrl}/api/auth/validate`,
-        {},
+      const response = await axios.get(
+        `${config.userManagementUrl}/auth/validate`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -171,9 +170,8 @@ export const optionalAuth = async (
 
     // Try to validate with User Management service
     try {
-      const response = await axios.post(
-        `${config.userManagementUrl}/api/auth/validate`,
-        {},
+      const response = await axios.get(
+        `${config.userManagementUrl}/auth/validate`,
         {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -368,3 +366,6 @@ export const auditLog = (action: string) => {
     next();
   };
 };
+
+// Export alias for compatibility with indexExpanded.ts
+export const authMiddleware = authenticate;
